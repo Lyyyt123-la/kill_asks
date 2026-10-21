@@ -54,6 +54,8 @@ NL2SQL_SYSTEM = """# 角色
 5. 对于“各/每/按 X”的问题必须 GROUP BY X，并让 SELECT 中包含该维度列。
 6. 无法回答（字段缺失/语义不明/超出数据范围）→ intent=clarify 或 unsupported，sql 为 null，
    在 clarification 里给出 2-3 个可选澄清项，禁止臆造字段。
+7. 按维度聚合时排除维度为空的行（如 WHERE region IS NOT NULL）；用户明确问“最高/最大/前三”用 DESC，
+   问“最低/最小/最少/倒数”必须用 ASC，不要一律降序。
 7. 图表选择：
    - 时间维度 + 数值 → line；
    - 类别 + 数值 → bar（类别>8 或名称较长时仍用 bar）；

@@ -21,6 +21,7 @@ if (!executablePath) {
   process.exit(1)
 }
 
+const BASE_URL = process.env.ASK_BASE_URL || 'http://127.0.0.1:8000'
 const OUT = path.resolve('..', 'docs', 'screenshots')
 fs.mkdirSync(OUT, { recursive: true })
 
@@ -45,7 +46,7 @@ async function waitToastGone() {
 
 try {
   console.log('open app ...')
-  await page.goto('http://127.0.0.1:5173', { waitUntil: 'networkidle' })
+  await page.goto(BASE_URL, { waitUntil: 'networkidle' })
   await page.waitForTimeout(800)
   await shot('01-welcome.png')
 
@@ -55,9 +56,17 @@ try {
   await waitToastGone()
   await shot('02-dataset-ready.png')
 
-  console.log('ask question 1 ...')
+  console.log('click example chip -> should fill composer, NOT send ...')
   const textarea = page.locator('.composer textarea')
-  await textarea.fill('各区域的销售额对比')
+  await page.locator('.dr-example').first().click()
+  await page.waitForTimeout(500)
+  const prefill = await textarea.inputValue()
+  const chartsAfterChip = await page.locator('.chart-card').count()
+  console.log('  prefill =', JSON.stringify(prefill), '| charts =', chartsAfterChip)
+  if (!prefill || chartsAfterChip !== 0) throw new Error('示例问题应只填入输入框、不自动发送')
+  await shot('02b-example-filled.png')
+
+  console.log('send question 1 ...')
   await page.keyboard.press('Enter')
   await page.waitForSelector('.chart-card', { timeout: 90000 })
   await page.waitForFunction(() => !document.querySelector('.lstep'), null, { timeout: 90000 })

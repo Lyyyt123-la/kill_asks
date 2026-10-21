@@ -12,6 +12,7 @@ from . import llm
 
 RATE_HINTS = ("rate", "率", "ratio", "percent", "pct")
 TIME_HINTS = ("time", "date", "日期", "时间", "period", "月", "日")
+LOW_HINTS = ("最低", "最小", "最少", "最差", "倒数", "垫底")
 
 
 def _summarize_for_llm(result: QueryResult, max_rows: int = 30) -> str:
@@ -88,14 +89,24 @@ def heuristic_insight(question: str, result: QueryResult) -> Insight:
     ]
     is_rate = _is_rate(y_name, question)
     is_time = bool(x_name) and _looks_time(x_name, [row[x_idx] for row in result.rows])
+    low_intent = any(keyword in question for keyword in LOW_HINTS)
 
     if is_rate:
-        top_value, top_row = max(pairs, key=lambda item: item[0] or 0)
-        low_value, low_row = min(pairs, key=lambda item: item[0] or 0)
-        top_label = str(top_row[x_idx]) if x_idx is not None else "整体"
-        low_label = str(low_row[x_idx]) if x_idx is not None else "整体"
-        headline = f"{top_label} 的{y_label}最高，为 {top_value:.2f}%"
-        bullets.append(f"最高为「{top_label}」{top_value:.2f}%，最低为「{low_label}」{low_value:.2f}%，相差 {top_value - low_value:.2f} 个百分点。")
+        sorted_pairs = sorted(pairs, key=lambda item: item[0] or 0)
+        if low_intent:
+            low_value, low_row = sorted_pairs[0]
+            high_value, high_row = sorted_pairs[-1]
+            low_label = str(low_row[x_idx]) if x_idx is not None else "整体"
+            high_label = str(high_row[x_idx]) if x_idx is not None else "整体"
+            headline = f"{low_label} 的{y_label}最低，为 {low_value:.2f}%"
+            bullets.append(f"最低为「{low_label}」{low_value:.2f}%，最高为「{high_label}」{high_value:.2f}%，相差 {high_value - low_value:.2f} 个百分点。")
+        else:
+            top_value, top_row = sorted_pairs[-1]
+            low_value, low_row = sorted_pairs[0]
+            top_label = str(top_row[x_idx]) if x_idx is not None else "整体"
+            low_label = str(low_row[x_idx]) if x_idx is not None else "整体"
+            headline = f"{top_label} 的{y_label}最高，为 {top_value:.2f}%"
+            bullets.append(f"最高为「{top_label}」{top_value:.2f}%，最低为「{low_label}」{low_value:.2f}%，相差 {top_value - low_value:.2f} 个百分点。")
         avg = sum(v or 0 for v, _ in pairs) / len(pairs)
         bullets.append(f"各组平均{y_label}约 {avg:.2f}%，可重点优化高于均值且占比大的分组。")
     elif is_time and len(pairs) >= 2:
@@ -112,17 +123,23 @@ def heuristic_insight(question: str, result: QueryResult) -> Insight:
         avg = sum(v or 0 for v, _ in pairs) / len(pairs)
         bullets.append(f"区间平均{y_label}为 {fmt_num(avg)}。")
     else:
-        top_value, top_row = max(pairs, key=lambda item: item[0] or 0)
-        top_label = str(top_row[x_idx]) if x_idx is not None else "当前结果"
+        sorted_pairs = sorted(pairs, key=lambda item: item[0] or 0, reverse=not low_intent)
+        target_value, target_row = sorted_pairs[0]
+        target_label = str(target_row[x_idx]) if x_idx is not None else "当前结果"
         total = sum(v or 0 for v, _ in pairs)
-        share = (top_value or 0) / total * 100 if total else 0
-        headline = f"{top_label} 的{y_label}最高，为 {fmt_num(top_value)}"
-        bullets.append(f"「{top_label}」排名第一，占可见分组的 {share:.1f}%。")
-        if len(pairs) >= 2:
-            second = sorted(pairs, key=lambda item: item[0] or 0, reverse=True)[1]
-            gap = (top_value or 0) - (second[0] or 0)
+        share = (target_value or 0) / total * 100 if total else 0
+        if low_intent:
+            headline = f"{target_label} 的{y_label}最低，为 {fmt_num(target_value)}"
+            bullets.append(f"「{target_label}」排名最后，占可见分组的 {share:.1f}%。")
+        else:
+            headline = f"{target_label} 的{y_label}最高，为 {fmt_num(target_value)}"
+            bullets.append(f"「{target_label}」排名第一，占可见分组的 {share:.1f}%。")
+        if len(sorted_pairs) >= 2:
+            second = sorted_pairs[1]
+            gap = abs((target_value or 0) - (second[0] or 0))
             second_label = str(second[1][x_idx]) if x_idx is not None else "第二名"
-            bullets.append(f"领先第二名「{second_label}」{fmt_num(gap)}。")
+            word = "领先" if not low_intent else "低于"
+            bullets.append(f"{word}「{second_label}」{fmt_num(gap)}。")
         bullets.append(f"当前展示 {len(pairs)} 个分组，可继续按区域/品类下钻定位原因。")
 
     followups = ["按区域拆分看看", "换成最近 30 天再对比", "导出明细数据"]

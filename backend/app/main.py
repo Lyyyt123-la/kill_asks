@@ -7,13 +7,33 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from . import config, store
 from .routers import chat, datasets
+
+# Windows 下 Python 的 mimetypes 会把 .js 识别成 text/plain（读取注册表），
+# 导致浏览器拒绝加载 ESM 前端资源。这里为构建产物显式指定 MIME 类型。
+ASSET_MEDIA = {
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".css": "text/css",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".json": "application/json",
+    ".map": "application/json",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".txt": "text/plain",
+}
 
 
 @asynccontextmanager
@@ -61,15 +81,30 @@ def health():
     }
 
 
-# 生产模式：直接托管前端构建产物（npm run build 之后生效）
+# ---------------- 生产模式：托管前端构建产物 ----------------
 if config.FRONTEND_DIST.exists():
-    assets_dir = config.FRONTEND_DIST / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    DIST_ROOT = config.FRONTEND_DIST.resolve()
+    ASSETS_ROOT = (config.FRONTEND_DIST / "assets").resolve()
+
+    def _safe_file(root, relative: str):
+        candidate = (root / relative).resolve()
+        if not str(candidate).startswith(str(root)):
+            return None
+        return candidate if candidate.is_file() else None
+
+    @app.get("/assets/{asset_path:path}", include_in_schema=False)
+    def serve_asset(asset_path: str):
+        candidate = _safe_file(ASSETS_ROOT, asset_path)
+        if not candidate:
+            raise HTTPException(status_code=404, detail="asset not found")
+        media = ASSET_MEDIA.get(candidate.suffix.lower(), "application/octet-stream")
+        return FileResponse(candidate, media_type=media)
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
-        candidate = config.FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(config.FRONTEND_DIST / "index.html")
+        if full_path:
+            candidate = _safe_file(DIST_ROOT, full_path)
+            if candidate:
+                media = ASSET_MEDIA.get(candidate.suffix.lower())
+                return FileResponse(candidate, media_type=media)
+        return FileResponse(DIST_ROOT / "index.html", media_type="text/html")

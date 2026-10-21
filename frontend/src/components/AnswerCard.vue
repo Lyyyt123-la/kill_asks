@@ -7,7 +7,7 @@ import SqlBlock from './SqlBlock.vue'
 const props = defineProps({
   message: { type: Object, required: true }
 })
-const emit = defineEmits(['send', 'open-inspector'])
+const emit = defineEmits(['send', 'open-inspector', 'fill'])
 
 const LOADING_STEPS = ['理解问题', '生成 SQL', '执行查询', '生成图表', '撰写洞察']
 const activeStep = ref(0)
@@ -115,7 +115,11 @@ const elapsed = computed(() => {
             <Icon name="check" :size="11" />{{ step.label }}
             <span v-if="step.detail" class="tag">{{ step.detail }}</span>
           </span>
-          <span v-if="response.mock" class="mock-badge"><Icon name="zap" :size="10" />演示模式</span>
+        </div>
+
+        <div v-if="response.mock" class="mock-note">
+          <Icon name="zap" :size="12" />
+          <span><b>演示模式</b>：当前未接入大模型，基于关键词规则解析，仅支持趋势 / 占比 / TopN / 退款率等基础问法。填入 API Key 后即可理解任意自然语言提问。</span>
         </div>
 
         <p v-if="response.insight?.headline" class="lead">{{ response.insight.headline }}</p>
@@ -148,7 +152,7 @@ const elapsed = computed(() => {
             v-for="followup in response.insight.followups"
             :key="followup"
             class="followup"
-            @click="emit('send', followup)"
+            @click="emit('fill', followup)"
           >
             <Icon name="sparkles" :size="12" />{{ followup }}
           </button>

@@ -25,6 +25,7 @@ const activeResponse = ref(null)
 const inspectorOpen = ref(false)
 const uploadOpen = ref(false)
 const previewOpen = ref(false)
+const prefillQuestion = ref(null)
 const toast = ref('')
 let toastTimer = null
 
@@ -158,7 +159,8 @@ async function onExample(question) {
     await loadDemo()
     if (!activeDataset.value) return
   }
-  sendQuestion(question)
+  // 只填入输入框，不自动发送（让用户自己确认）
+  prefillQuestion.value = { text: question, nonce: Date.now() }
 }
 </script>
 
@@ -190,6 +192,7 @@ async function onExample(question) {
         :examples="EXAMPLES"
         @send="sendQuestion"
         @example="onExample"
+        @fill="onExample"
         @upload="uploadOpen = true"
         @demo="loadDemo"
         @preview="previewOpen = true"
@@ -201,6 +204,7 @@ async function onExample(question) {
         :loading="loading"
         :dataset="activeDataset"
         :model="modelLabel"
+        :prefill="prefillQuestion"
         @send="sendQuestion"
       />
     </main>

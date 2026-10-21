@@ -10,7 +10,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   examples: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['send', 'upload', 'demo', 'preview', 'open-inspector', 'example'])
+const emit = defineEmits(['send', 'upload', 'demo', 'preview', 'open-inspector', 'example', 'fill'])
 
 const scrollEl = ref(null)
 
@@ -123,6 +123,7 @@ watch(() => props.dataset, () => nextTick(scrollToBottom))
           :key="message.id"
           :message="message"
           @send="emit('send', $event)"
+          @fill="emit('fill', $event)"
           @open-inspector="emit('open-inspector')"
         />
       </template>

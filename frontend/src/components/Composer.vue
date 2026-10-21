@@ -6,7 +6,8 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
   dataset: { type: Object, default: null },
-  model: { type: String, default: '演示模式' }
+  model: { type: String, default: '演示模式' },
+  prefill: { type: Object, default: null }
 })
 const emit = defineEmits(['send'])
 
@@ -42,6 +43,23 @@ function onKeydown(event) {
 }
 
 watch(text, () => nextTick(autoGrow))
+
+// 点击「示例问题 / 追问建议」只填入输入框，由用户确认后自行发送
+watch(
+  () => props.prefill,
+  (value) => {
+    if (!value || !value.text) return
+    text.value = value.text
+    nextTick(() => {
+      autoGrow()
+      const el = textarea.value
+      if (el) {
+        el.focus()
+        el.setSelectionRange(el.value.length, el.value.length)
+      }
+    })
+  }
+)
 </script>
 
 <template>

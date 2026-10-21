@@ -14,6 +14,7 @@ TIME_KEYWORDS = ("趋势", "走势", "每月", "各月", "按月", "每天", "�
 SHARE_KEYWORDS = ("占比", "比例", "构成", "分布")
 RATE_KEYWORDS = ("退款率", "退货率", "转化率", "占比率", "率")
 TOP_KEYWORDS = ("最高", "最多", "最大", "排名", "前三", "前五", "top", "最好", "排行")
+LOW_KEYWORDS = ("最低", "最小", "最少", "最差", "倒数", "垫底")
 COUNT_KEYWORDS = ("订单量", "订单数", "多少单", "单量", "人数", "用户数", "多少")
 AMOUNT_HINTS = ("amount", "sales", "gmv", "revenue", "price", "金额", "销售额", "收入", "价格", "单价", "费用")
 AMOUNT_EXCLUDE = ("id", "quantity", "qty", "count", "num", "数量", "人数", "次数", "编号", "用户")
@@ -106,6 +107,14 @@ def _with_filter(base: str, where: str | None) -> str:
     return base.replace(" GROUP BY ", " WHERE " + where + " GROUP BY ", 1)
 
 
+def _dim_where(category_col: ColumnInfo | None, where: str | None) -> str | None:
+    """维度聚合时排除维度为空的分组（如 category 为 NULL 的行）。"""
+    if not category_col:
+        return where
+    cond = f"{_q(category_col.name)} IS NOT NULL"
+    return f"{where} AND {cond}" if where else cond
+
+
 def plan(question: str, info: DatasetInfo, table: str | None = None) -> dict[str, Any]:
     q = question.lower()
     table = table or info.table_name
@@ -135,11 +144,14 @@ def plan(question: str, info: DatasetInfo, table: str | None = None) -> dict[str
 
     # 1) 退款率 / 比率类
     if is_rate and category_col and bool_col:
+        dim_where = _dim_where(category_col, where)
         sql = (
             f'SELECT {_q(category_col.name)} AS "{cat_label}", '
             f'ROUND(SUM(CASE WHEN {_q(bool_col.name)} THEN 1 ELSE 0 END) * 100.0 '
             f'/ NULLIF(COUNT(*), 0), 2) AS "退款率(%)" '
-            f'FROM {_q(table)} GROUP BY 1 ORDER BY 2 DESC LIMIT 20'
+            f'FROM {_q(table)}'
+            + (f" WHERE {dim_where}" if dim_where else "")
+            + ' GROUP BY 1 ORDER BY 2 DESC LIMIT 20'
         )
         return finish(sql, {
             "type": "bar", "title": f"各{cat_label}退款率（%）",
@@ -148,10 +160,13 @@ def plan(question: str, info: DatasetInfo, table: str | None = None) -> dict[str
 
     # 2) 占比 / 构成
     if category_col and amount_col and any(keyword in question for keyword in SHARE_KEYWORDS):
+        dim_where = _dim_where(category_col, where)
         sql = (
             f'SELECT {_q(category_col.name)} AS "{cat_label}", '
             f'ROUND(SUM({_q(amount_col.name)}), 2) AS "销售额" '
-            f'FROM {_q(table)} GROUP BY 1 ORDER BY 2 DESC LIMIT 20'
+            f'FROM {_q(table)}'
+            + (f" WHERE {dim_where}" if dim_where else "")
+            + ' GROUP BY 1 ORDER BY 2 DESC LIMIT 20'
         )
         return finish(sql, {
             "type": "pie", "title": f"{cat_label}销售额占比",
@@ -187,20 +202,31 @@ def plan(question: str, info: DatasetInfo, table: str | None = None) -> dict[str
             "x": "时间", "y": [alias], "series": None, "sort": "x",
         }, f"{label}聚合{amount_col.name if amount_col else '记录数'}")
 
-    # 4) Top N / 排名
-    if category_col and amount_col and any(keyword in question for keyword in TOP_KEYWORDS):
+    # 4) Top N / 排名（支持最高/最低两个方向）
+    if category_col and amount_col and (
+        any(keyword in question for keyword in TOP_KEYWORDS)
+        or any(keyword in question for keyword in LOW_KEYWORDS)
+    ):
+        low_intent = any(keyword in question for keyword in LOW_KEYWORDS)
         limit = 5
         match = re.search(r"(\d+)\s*(个|名|条|位)?", question)
         if match:
             limit = max(1, min(int(match.group(1)), 20))
+        direction = "ASC" if low_intent else "DESC"
+        dim_where = _dim_where(category_col, where)
         sql = (
             f'SELECT {_q(category_col.name)} AS "{cat_label}", '
             f'ROUND(SUM({_q(amount_col.name)}), 2) AS "销售额" '
             f'FROM {_q(table)}'
         )
-        if where:
-            sql += f" WHERE {where}"
-        sql += f" GROUP BY 1 ORDER BY 2 DESC LIMIT {limit}"
+        if dim_where:
+            sql += f" WHERE {dim_where}"
+        sql += f" GROUP BY 1 ORDER BY 2 {direction} LIMIT {limit}"
+        if low_intent:
+            return finish(sql, {
+                "type": "bar", "title": f"销售额最低的 {limit} 个{cat_label}",
+                "x": cat_label, "y": ["销售额"], "series": None, "sort": None,
+            }, f"按{cat_label}汇总后取销售额最低的 {limit} 个")
         return finish(sql, {
             "type": "bar", "title": f"销售额 Top {limit} {cat_label}",
             "x": cat_label, "y": ["销售额"], "series": None, "sort": "y_desc",
@@ -220,13 +246,14 @@ def plan(question: str, info: DatasetInfo, table: str | None = None) -> dict[str
 
     # 6) 默认：维度汇总
     if category_col and amount_col:
+        dim_where = _dim_where(category_col, where)
         sql = (
             f'SELECT {_q(category_col.name)} AS "{cat_label}", '
             f'ROUND(SUM({_q(amount_col.name)}), 2) AS "销售额", COUNT(*) AS "订单量" '
             f'FROM {_q(table)}'
         )
-        if where:
-            sql += f" WHERE {where}"
+        if dim_where:
+            sql += f" WHERE {dim_where}"
         sql += ' GROUP BY 1 ORDER BY 2 DESC LIMIT 20'
         return finish(sql, {
             "type": "bar", "title": f"各{cat_label}销售额",
