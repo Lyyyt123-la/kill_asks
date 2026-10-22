@@ -15,6 +15,8 @@ class ColumnInfo(BaseModel):
     distinct: int | None = None
     enum_values: list[str] | None = None
     null_ratio: float | None = None
+    min_value: str | None = None
+    max_value: str | None = None
 
 
 class DatasetInfo(BaseModel):

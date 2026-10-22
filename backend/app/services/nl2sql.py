@@ -38,12 +38,56 @@ class LLMOutput(BaseModel):
     clarification: dict[str, Any] | None = None
 
 
+def _as_str_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
 def _parse_llm_output(data: dict[str, Any]) -> LLMOutput:
-    allowed = set(LLMOutput.model_fields.keys())
-    out = LLMOutput(**{k: v for k, v in data.items() if k in allowed})
+    """容错解析模型输出（模型偶尔会把列表写成字符串、把 null 写成空串）。"""
+    if not isinstance(data, dict):
+        raise ValueError("模型输出不是 JSON 对象")
+
+    chart_raw = data.get("chart")
+    chart = None
+    if isinstance(chart_raw, dict):
+        y_raw = chart_raw.get("y")
+        if isinstance(y_raw, str):
+            y_raw = [y_raw]
+        y_list = [str(item) for item in y_raw if isinstance(item, str)] if isinstance(y_raw, list) else []
+        chart = LLMChart(
+            type=str(chart_raw.get("type") or "table"),
+            title=str(chart_raw.get("title") or ""),
+            x=chart_raw.get("x") if isinstance(chart_raw.get("x"), str) else None,
+            y=y_list,
+            series=chart_raw.get("series") if isinstance(chart_raw.get("series"), str) else None,
+            sort=chart_raw.get("sort") if isinstance(chart_raw.get("sort"), str) else None,
+        )
+
+    clarification = data.get("clarification")
+    if not isinstance(clarification, dict):
+        clarification = None
+
+    sql = data.get("sql")
+    sql = sql.strip() if isinstance(sql, str) and sql.strip() else None
+
+    out = LLMOutput(
+        intent=str(data.get("intent") or "query"),
+        plan=str(data.get("plan") or ""),
+        sql=sql,
+        chart=chart,
+        insight_focus=_as_str_list(data.get("insight_focus")),
+        assumptions=_as_str_list(data.get("assumptions")),
+        clarification=clarification,
+    )
     if out.intent not in {"query", "clarify", "unsupported"}:
         out.intent = "query"
-    if out.intent == "query" and not (out.sql and out.sql.strip()):
+    if out.intent == "query" and not out.sql:
         out.intent = "clarify"
         out.clarification = out.clarification or {
             "question": "能再具体一点吗？例如说明想看的时间范围和指标。",
@@ -157,11 +201,13 @@ async def analyze(req: ChatRequest) -> ChatResponse:
     schema_block = dataset_service.build_schema_block(info)
     metric_block = dataset_service.build_metric_dict(info)
     history_block = _build_history(req.history)
+    data_time_range = dataset_service.get_data_time_range(info)
 
     system_prompt = prompts.render(
         prompts.NL2SQL_SYSTEM,
         DB_ENGINE="DuckDB",
         TODAY=date.today().isoformat(),
+        DATA_TIME_RANGE=data_time_range,
         MAX_ROWS=str(config.MAX_ROWS),
         SCHEMA_BLOCK=schema_block,
         METRIC_DICT=metric_block,
@@ -245,7 +291,7 @@ async def analyze(req: ChatRequest) -> ChatResponse:
                     sql = repaired.sql
                 else:
                     break
-            except llm.LLMError:
+            except Exception:  # noqa: BLE001 - 修复失败就按原错误返回
                 break
 
     if result is None:

@@ -85,6 +85,17 @@ def _column_infos(df: pd.DataFrame) -> list[ColumnInfo]:
         if distinct is not None and 1 < distinct <= 20:
             enum_values = [str(v) for v in non_null.unique()[:20]]
         null_ratio = float(series.isna().mean()) if len(series) else 0.0
+        min_value = max_value = None
+        if len(non_null):
+            try:
+                if pd.api.types.is_datetime64_any_dtype(series):
+                    min_value = str(non_null.min())[:19]
+                    max_value = str(non_null.max())[:19]
+                elif pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series):
+                    min_value = f"{float(non_null.min()):.4g}"
+                    max_value = f"{float(non_null.max()):.4g}"
+            except (TypeError, ValueError):
+                min_value = max_value = None
         infos.append(
             ColumnInfo(
                 name=str(col),
@@ -94,6 +105,8 @@ def _column_infos(df: pd.DataFrame) -> list[ColumnInfo]:
                 distinct=distinct,
                 enum_values=enum_values,
                 null_ratio=round(null_ratio, 4),
+                min_value=min_value,
+                max_value=max_value,
             )
         )
     return infos
@@ -219,6 +232,8 @@ def build_schema_block(info: DatasetInfo) -> str:
     for col in info.columns:
         sample = " | ".join(col.samples[:2]) if col.samples else "无样例"
         extra = []
+        if col.min_value is not None and col.max_value is not None:
+            extra.append(f"范围 {col.min_value} ~ {col.max_value}")
         if col.enum_values:
             extra.append("枚举=" + "/".join(col.enum_values[:12]))
         if col.null_ratio:
@@ -227,6 +242,15 @@ def build_schema_block(info: DatasetInfo) -> str:
         lines.append(f"- {col.name}  {col.dtype}  样例：{sample}{tail}")
     lines.append("注意：SQL 中的中文标识符必须使用双引号包裹。")
     return "\n".join(lines)
+
+
+def get_data_time_range(info: DatasetInfo) -> str:
+    """返回数据里时间字段的实际范围（用于让模型按数据日期理解“上个月/双11”）。"""
+    ranges = []
+    for col in info.columns:
+        if col.dtype == "TIMESTAMP" and col.min_value and col.max_value:
+            ranges.append(f"{col.name}: {col.min_value} ~ {col.max_value}")
+    return "；".join(ranges) if ranges else "未知（数据中没有时间字段）"
 
 
 def build_metric_dict(info: DatasetInfo) -> str:

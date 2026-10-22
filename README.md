@@ -86,19 +86,25 @@ npm run dev
 
 ## 大模型配置
 
-复制 `backend/.env.example` 为 `backend/.env`，填入任意 OpenAI 兼容服务的 Key：
+复制 `backend/.env.example` 为 `backend/.env`，填入任意 OpenAI 兼容服务的 Key。
+
+**推荐：阿里云百炼 DashScope（一个 Key 可调用 Qwen / DeepSeek / GLM / Kimi 等）**
 
 ```ini
-LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-LLM_MODEL=glm-4-flash
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=qwen-plus
 LLM_API_KEY=你的Key
 ```
 
-备选：通义千问 DashScope、DeepSeek、Kimi、OpenAI，`.env.example` 中已给出示例配置。
+经过实测（本项目演示数据 + 6 类问题）：`qwen-plus` 约 8–12 秒/问，SQL 与洞察质量稳定；
+`qwen3.8-max-0902` 质量更高但单问 30–90 秒，不建议现场演示使用。
+
+备选：智谱 GLM、DeepSeek、Kimi、OpenAI，`.env.example` 中已给出配置示例。
 **Key 只在后端环境变量中读取，不会进入前端代码，也不提交到 Git。**
 
 - 未配置 Key：`/api/health` 返回 `mock_mode: true`，系统自动使用规则版 NL2SQL；
-- 配置 Key 后：自动调用真实模型，失败时仍会降级到演示模式，保证演示不中断。
+- 配置 Key 后：自动调用真实模型，失败时仍会降级到演示模式，保证演示不中断；
+- 可用 `GET /api/llm/status`、`POST /api/llm/test` 检查模型配置与连通性。
 
 ## 演示数据与推荐问题
 

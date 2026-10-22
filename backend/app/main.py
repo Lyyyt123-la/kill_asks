@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from . import config, store
 from .routers import chat, datasets
@@ -64,6 +64,15 @@ app.add_middleware(
 
 app.include_router(datasets.router)
 app.include_router(chat.router)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """保证任何未捕获异常都返回 JSON，而不是空响应的 500。"""
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"服务内部异常：{type(exc).__name__}: {exc}"},
+    )
 
 
 @app.get("/api/health", tags=["system"], summary="健康检查")
