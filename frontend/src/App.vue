@@ -18,7 +18,9 @@ const EXAMPLES = [
 
 const health = ref(null)
 const datasets = ref([])
+const documents = ref([])
 const activeDataset = ref(null)
+const activeDocument = ref(null)
 const messages = ref([])
 const loading = ref(false)
 const activeResponse = ref(null)
@@ -37,11 +39,15 @@ const modelLabel = computed(() => {
 function showToast(message) {
   toast.value = message
   if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { toast.value = '' }, 2800)
+  toastTimer = setTimeout(() => { toast.value = '' }, 3200)
 }
 
 async function refreshDatasets() {
   datasets.value = await api.listDatasets()
+}
+
+async function refreshDocuments() {
+  documents.value = await api.listDocuments()
 }
 
 onMounted(async () => {
@@ -51,16 +57,22 @@ onMounted(async () => {
     showToast('后端未连接：' + (exc.message || '请启动 FastAPI'))
   }
   try {
-    await refreshDatasets()
+    await Promise.all([refreshDatasets(), refreshDocuments()])
   } catch (exc) {
     /* 后端未启动时静默 */
   }
 })
 
+function newChat() {
+  messages.value = []
+  activeResponse.value = null
+}
+
 async function selectDataset(row) {
   try {
     const full = await api.getDataset(row.id)
     activeDataset.value = full
+    activeDocument.value = null
     messages.value = []
     activeResponse.value = null
     inspectorOpen.value = false
@@ -69,7 +81,21 @@ async function selectDataset(row) {
   }
 }
 
-function newChat() {
+async function selectDocument(row) {
+  try {
+    const full = await api.getDocument(row.id)
+    activeDocument.value = full
+    activeDataset.value = null
+    messages.value = []
+    activeResponse.value = null
+    inspectorOpen.value = false
+  } catch (exc) {
+    showToast('读取文档失败：' + exc.message)
+  }
+}
+
+function exitDocMode() {
+  activeDocument.value = null
   messages.value = []
   activeResponse.value = null
 }
@@ -93,6 +119,18 @@ async function onUploaded(dataset) {
   showToast(`上传成功：${dataset.name}（${Number(dataset.rows).toLocaleString()} 行）`)
 }
 
+async function onDocumentUploaded(document) {
+  uploadOpen.value = false
+  await Promise.all([refreshDocuments(), refreshDatasets()])
+  await selectDocument(document)
+  const tableCount = document.tables?.length || 0
+  showToast(
+    tableCount
+      ? `文档解析完成：已提取 ${tableCount} 张表格成为数据集，可直接分析`
+      : '文档解析完成，可以开始文档问答'
+  )
+}
+
 function historyPayload() {
   return messages.value
     .filter((m) => m.role === 'assistant' && m.response?.result)
@@ -105,9 +143,20 @@ function historyPayload() {
     }))
 }
 
+function docHistoryPayload() {
+  return messages.value
+    .filter((m) => m.role === 'assistant' && m.docAnswer)
+    .slice(-3)
+    .map((m) => ({ question: m.question }))
+}
+
 async function sendQuestion(rawQuestion) {
   const question = String(rawQuestion || '').trim()
   if (!question || loading.value) return
+  if (activeDocument.value) {
+    await askDocumentQuestion(question)
+    return
+  }
 
   if (!activeDataset.value) {
     await loadDemo()
@@ -127,7 +176,6 @@ async function sendQuestion(rawQuestion) {
     response: null,
     error: null
   })
-  // 注意：必须取数组里的响应式代理，直接改原始对象不会触发视图更新与自动滚动
   const assistant = messages.value[messages.value.length - 1]
   loading.value = true
 
@@ -154,13 +202,59 @@ async function sendQuestion(rawQuestion) {
   }
 }
 
+async function askDocumentQuestion(question) {
+  const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  messages.value.push({ id: `u-${Date.now()}`, role: 'user', text: question, time })
+  messages.value.push({
+    id: `a-${Date.now()}`,
+    role: 'assistant',
+    kind: 'doc',
+    question,
+    loading: true,
+    docAnswer: null,
+    error: null
+  })
+  const assistant = messages.value[messages.value.length - 1]
+  loading.value = true
+  try {
+    const result = await api.askDocument(activeDocument.value.id, {
+      question,
+      history: docHistoryPayload()
+    })
+    assistant.loading = false
+    assistant.docAnswer = result
+    if (!result.ok) assistant.error = result.error || result.answer
+  } catch (exc) {
+    assistant.loading = false
+    assistant.error = exc.message || '文档问答失败'
+    showToast('文档问答失败：' + (exc.message || '请检查后端服务'))
+  } finally {
+    loading.value = false
+  }
+}
+
 async function onExample(question) {
+  if (activeDocument.value) {
+    prefillQuestion.value = { text: question, nonce: Date.now() }
+    return
+  }
   if (!activeDataset.value) {
     await loadDemo()
     if (!activeDataset.value) return
   }
-  // 只填入输入框，不自动发送（让用户自己确认）
   prefillQuestion.value = { text: question, nonce: Date.now() }
+}
+
+async function onAnalyzeDataset(datasetId) {
+  try {
+    await refreshDatasets()
+    let row = datasets.value.find((item) => item.id === datasetId)
+    if (!row) row = await api.getDataset(datasetId)
+    await selectDataset(row)
+    showToast('已切换为数据集分析：可以直接对话查询这张表')
+  } catch (exc) {
+    showToast('切换数据集失败：' + exc.message)
+  }
 }
 </script>
 
@@ -168,25 +262,31 @@ async function onExample(question) {
   <div class="app" :class="{ 'inspector-open': inspectorOpen }">
     <Sidebar
       :datasets="datasets"
+      :documents="documents"
       :active-id="activeDataset?.id || ''"
+      :active-doc-id="activeDocument?.id || ''"
       :health="health"
       @new-chat="newChat"
       @select="selectDataset"
+      @select-doc="selectDocument"
       @upload="uploadOpen = true"
     />
 
     <main class="main">
       <Topbar
         :dataset="activeDataset"
+        :document="activeDocument"
         :health="health"
         :inspector-open="inspectorOpen"
         @toggle-inspector="inspectorOpen = !inspectorOpen"
         @preview="previewOpen = true"
+        @exit-doc="exitDocMode"
       />
 
       <ChatThread
         :messages="messages"
         :dataset="activeDataset"
+        :document="activeDocument"
         :health="health"
         :loading="loading"
         :examples="EXAMPLES"
@@ -197,12 +297,15 @@ async function onExample(question) {
         @demo="loadDemo"
         @preview="previewOpen = true"
         @open-inspector="inspectorOpen = true"
+        @analyze-dataset="onAnalyzeDataset"
+        @exit-doc="exitDocMode"
       />
 
       <Composer
         :disabled="loading || !health"
         :loading="loading"
         :dataset="activeDataset"
+        :document="activeDocument"
         :model="modelLabel"
         :prefill="prefillQuestion"
         @send="sendQuestion"
@@ -210,7 +313,7 @@ async function onExample(question) {
     </main>
 
     <Inspector
-      v-if="inspectorOpen"
+      v-if="inspectorOpen && activeDataset"
       :response="activeResponse"
       :dataset="activeDataset"
       @close="inspectorOpen = false"
@@ -221,6 +324,7 @@ async function onExample(question) {
       v-if="uploadOpen"
       @close="uploadOpen = false"
       @uploaded="onUploaded"
+      @document-uploaded="onDocumentUploaded"
       @demo="loadDemo(); uploadOpen = false"
     />
 

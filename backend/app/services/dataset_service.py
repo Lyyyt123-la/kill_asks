@@ -183,6 +183,42 @@ def save_upload(filename: str, data: bytes, display_name: str | None = None,
     )
 
 
+def save_dataframe(df: pd.DataFrame, name: str, source_file: str = "document_table") -> DatasetInfo:
+    """把内存中的 DataFrame 直接注册为可分析数据集（用于 PDF/Word/图片表格提取）。"""
+    if df is None or df.empty:
+        raise ValueError("表格为空")
+    df = _normalize_columns(df.copy())
+    df = _infer_datetimes(df)
+    df = df.dropna(how="all").reset_index(drop=True)
+    if df.empty:
+        raise ValueError("表格没有有效数据行")
+    if len(df) > MAX_DATA_ROWS:
+        raise ValueError(f"表格行数超过 {MAX_DATA_ROWS:,} 行")
+
+    dataset_id = "ds_" + uuid.uuid4().hex[:10]
+    table_name = _write_duckdb(dataset_id, df)
+    infos = _column_infos(df)
+    created_at = store.now_iso()
+    safe_source = Path(source_file).name if source_file else "document_table"
+    meta = {
+        "id": dataset_id,
+        "name": (name or "文档表格")[:60],
+        "table_name": table_name,
+        "source_file": safe_source,
+        "rows": int(len(df)),
+        "cols": int(len(df.columns)),
+        "created_at": created_at,
+        "sheet": None,
+        "columns_json": json.dumps([c.model_dump() for c in infos], ensure_ascii=False),
+    }
+    store.save_dataset(meta)
+    return DatasetInfo(
+        id=dataset_id, name=meta["name"], table_name=table_name,
+        source_file=safe_source, rows=meta["rows"], cols=meta["cols"],
+        created_at=created_at, sheet=None, columns=infos,
+    )
+
+
 def get_dataset_info(dataset_id: str) -> DatasetInfo | None:
     meta = store.get_dataset(dataset_id)
     if not meta:

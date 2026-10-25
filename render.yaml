@@ -1,0 +1,22 @@
+# Render 一键部署蓝图（免费方案，仅作保底）
+# 使用方式：把仓库推到 GitHub → Render 控制台 New → Blueprint → 选择本仓库
+services:
+  - type: web
+    name: askdata
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: LLM_BASE_URL
+        value: https://dashscope.aliyuncs.com/compatible-mode/v1
+      - key: LLM_MODEL
+        value: qwen-plus
+      - key: LLM_API_KEY
+        sync: false
+      - key: APP_ACCESS_CODE
+        sync: false
+      - key: RATE_LIMIT_PER_MIN
+        value: "20"

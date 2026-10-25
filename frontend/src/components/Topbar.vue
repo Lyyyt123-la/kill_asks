@@ -3,10 +3,11 @@ import Icon from './Icon.vue'
 
 defineProps({
   dataset: { type: Object, default: null },
+  document: { type: Object, default: null },
   health: { type: Object, default: null },
   inspectorOpen: { type: Boolean, default: false }
 })
-const emit = defineEmits(['toggle-inspector', 'preview'])
+const emit = defineEmits(['toggle-inspector', 'preview', 'exit-doc'])
 </script>
 
 <template>
@@ -14,16 +15,21 @@ const emit = defineEmits(['toggle-inspector', 'preview'])
     <div class="crumbs">
       <span>对话</span>
       <Icon name="chevron-right" :size="13" />
-      <b>{{ dataset ? dataset.name : '新的分析' }}</b>
+      <b>{{ document ? document.name : dataset ? dataset.name : '新的分析' }}</b>
+      <span v-if="document" class="mode-pill"><Icon name="file-text" :size="10" />文档问答</span>
     </div>
     <div class="top-actions">
-      <button v-if="dataset" class="chip click" @click="emit('preview')">
+      <button v-if="document" class="chip click" @click="emit('exit-doc')">
+        <Icon name="x" :size="12" />退出文档模式
+      </button>
+      <button v-else-if="dataset" class="chip click" @click="emit('preview')">
         <span class="dot ok" />{{ dataset.source_file }}
       </button>
       <span class="chip">
         <Icon name="cpu" :size="13" />{{ health?.mock_mode ? '演示模式' : (health?.model || '大模型') }}
       </span>
       <button
+        v-if="!document"
         class="icon-btn"
         :class="{ on: inspectorOpen }"
         title="检查器：查看 SQL / 结果 / 字段"

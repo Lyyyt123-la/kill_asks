@@ -1,0 +1,18 @@
+services:
+  askdata:
+    build: .
+    image: askdata:latest
+    container_name: askdata
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    environment:
+      - PORT=8000
+      # 公网部署建议设置访问口令，防止别人刷你的模型额度
+      - APP_ACCESS_CODE=${APP_ACCESS_CODE:-}
+      - RATE_LIMIT_PER_MIN=${RATE_LIMIT_PER_MIN:-20}
+    volumes:
+      # 持久化上传的数据集与元数据（容器重启不丢）
+      - ./data:/app/backend/data
+    restart: unless-stopped

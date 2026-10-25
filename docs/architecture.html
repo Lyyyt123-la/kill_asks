@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>问数 AskData 架构图</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1400px; height: 900px; padding: 46px 54px;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #FBFAF6; color: #23211D;
+  }
+  .title { font-size: 26px; font-weight: 700; letter-spacing: .02em; }
+  .subtitle { margin-top: 8px; font-size: 13px; color: #8C8678; }
+  .canvas { margin-top: 36px; display: flex; flex-direction: column; gap: 18px; }
+  .layer { display: flex; align-items: stretch; gap: 14px; }
+  .layer-label {
+    width: 96px; flex: none; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #2F6B4F; letter-spacing: .12em;
+    border-right: 2px solid #DCE6DD; text-align: center;
+  }
+  .layer-boxes { flex: 1; display: flex; gap: 12px; }
+  .box {
+    flex: 1; background: #FFFFFF; border: 1px solid #E4DED0; border-radius: 12px;
+    padding: 14px 16px; box-shadow: 0 8px 22px -18px rgba(60,50,20,.45);
+  }
+  .box.highlight { border-color: #B9D2C1; background: #F4F9F5; }
+  .box.dark { background: #252B26; border-color: #252B26; color: #DDE7DF; }
+  .box b { display: block; font-size: 14px; margin-bottom: 5px; }
+  .box span { display: block; font-size: 11px; line-height: 1.7; color: #7A7468; }
+  .box.dark span { color: #A9BCA9; }
+  .box .tag {
+    display: inline-block; font-size: 9px; font-family: Consolas, monospace;
+    color: #2F6B4F; background: #EAF1EA; border-radius: 4px; padding: 1px 6px; margin-bottom: 6px;
+  }
+  .arrow { text-align: center; font-size: 16px; color: #B4AC9B; line-height: 1; }
+  .legend { margin-top: 30px; display: flex; gap: 22px; font-size: 11px; color: #8C8678; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+  <div class="title">问数 AskData · 系统架构</div>
+  <div class="subtitle">对话式数据分析平台：数据接入 → NL2SQL → 自动图表 → 智能洞察；扩展 PDF / Word / 图片数据与文档问答</div>
+
+  <div class="canvas">
+    <div class="layer">
+      <div class="layer-label">用户层</div>
+      <div class="layer-boxes">
+        <div class="box highlight"><b>对话式分析界面</b><span>Vue 3 + Vite + ECharts<br>欢迎页 / 对话 / 图表卡 / 洞察 / SQL 检查器</span></div>
+        <div class="box highlight"><b>文档与截图入口</b><span>上传 PDF / Word / 图片<br>提取表格 · 文档问答 · 引用核对</span></div>
+      </div>
+    </div>
+    <div class="arrow">▼ REST / 流式响应</div>
+    <div class="layer">
+      <div class="layer-label">接入层</div>
+      <div class="layer-boxes">
+        <div class="box"><b>FastAPI 应用</b><span>数据集 API · 对话 API · 文档 API<br>访问口令 / 限流 / 全局异常兜底</span></div>
+      </div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="layer">
+      <div class="layer-label">能力层</div>
+      <div class="layer-boxes">
+        <div class="box"><span class="tag">NL2SQL</span><b>分析流水线</b><span>Schema 注入 → 生成计划/SQL → 校验 → 执行 → 失败修复 → 洞察</span></div>
+        <div class="box"><span class="tag">RAG</span><b>文档解析与问答</b><span>pdfplumber / python-docx 提取<br>切片 → 向量+关键词检索 → 带引用回答</span></div>
+        <div class="box"><span class="tag">GUARD</span><b>SQL 安全校验</b><span>sqlglot：只读、单语句、白名单<br>强制 LIMIT、超时中断</span></div>
+        <div class="box"><span class="tag">EXEC</span><b>查询执行</b><span>DuckDB 只读连接<br>结果归一化 / 截断 / 缓存</span></div>
+      </div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="layer">
+      <div class="layer-label">模型层</div>
+      <div class="layer-boxes">
+        <div class="box"><b>qwen-plus（文本）</b><span>SQL 生成 / 输出修复 / 洞察 / RAG 回答<br>OpenAI 兼容协议，可切换百炼上其他模型</span></div>
+        <div class="box"><b>qwen3-vl-plus（视觉）</b><span>图片表格识别 → CSV / Markdown → 数据集</span></div>
+        <div class="box"><b>Embedding 模型</b><span>文档切片向量化，关键词检索自动降级</span></div>
+      </div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="layer">
+      <div class="layer-label">数据层</div>
+      <div class="layer-boxes">
+        <div class="box dark"><b>DuckDB</b><span>每个数据集一张表；分析型聚合查询</span></div>
+        <div class="box dark"><b>SQLite</b><span>数据集 / 文档元数据、切片与向量</span></div>
+        <div class="box dark"><b>本地文件存储</b><span>原始上传文件、文档原文件</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:#2F6B4F"></i>核心能力</span>
+    <span><i style="background:#E4DED0"></i>支撑模块</span>
+    <span><i style="background:#252B26"></i>数据与存储</span>
+  </div>
+</body>
+</html>

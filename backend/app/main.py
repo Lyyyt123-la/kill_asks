@@ -5,14 +5,17 @@
 """
 from __future__ import annotations
 
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import config, store
-from .routers import chat, datasets
+from .routers import chat, datasets, documents
 
 # Windows 下 Python 的 mimetypes 会把 .js 识别成 text/plain（读取注册表），
 # 导致浏览器拒绝加载 ESM 前端资源。这里为构建产物显式指定 MIME 类型。
@@ -64,6 +67,45 @@ app.add_middleware(
 
 app.include_router(datasets.router)
 app.include_router(chat.router)
+app.include_router(documents.router)
+
+
+class ApiGuardMiddleware(BaseHTTPMiddleware):
+    """公网保护：访问口令 + 每分钟限流（未配置时自动不生效）。"""
+
+    def __init__(self, app):
+        super().__init__(app)
+        self._hits: dict[str, deque] = defaultdict(deque)
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        path = request.url.path
+        if path.startswith("/api") and path != "/api/health":
+            if config.APP_ACCESS_CODE:
+                provided = request.headers.get("x-access-code") or request.query_params.get("code") or ""
+                if provided != config.APP_ACCESS_CODE:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "访问口令错误，请在网址后加 ?code=你的口令"},
+                    )
+            limit = config.RATE_LIMIT_PER_MIN
+            if limit > 0:
+                ip = request.client.host if request.client else "unknown"
+                now = time.time()
+                bucket = self._hits[ip]
+                while bucket and now - bucket[0] >= 60:
+                    bucket.popleft()
+                if len(bucket) >= limit:
+                    return JSONResponse(
+                        status_code=429,
+                        content={"detail": f"请求过于频繁（每分钟上限 {limit} 次），请稍后再试"},
+                    )
+                bucket.append(now)
+        return await call_next(request)
+
+
+app.add_middleware(ApiGuardMiddleware)
 
 
 @app.exception_handler(Exception)
@@ -87,6 +129,8 @@ def health():
         "demo_ready": config.DEMO_DATASET_FILE.exists(),
         "max_rows": config.MAX_ROWS,
         "max_upload_mb": config.MAX_UPLOAD_MB,
+        "vision_model": config.VISION_MODEL,
+        "embedding_model": config.EMBED_MODEL,
     }
 
 

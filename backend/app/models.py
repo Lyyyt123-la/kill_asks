@@ -114,3 +114,44 @@ class ChatResponse(BaseModel):
 class RawQueryRequest(BaseModel):
     dataset_id: str
     sql: str
+
+
+# ---------------- 文档 / 图片（RAG & Vision） ----------------
+class DocTableInfo(BaseModel):
+    dataset_id: str
+    name: str
+    rows: int
+    cols: int
+
+
+class DocumentInfo(BaseModel):
+    id: str
+    name: str
+    file_type: str
+    source_file: str
+    created_at: str
+    chars: int = 0
+    chunks: int = 0
+    tables: list[DocTableInfo] = Field(default_factory=list)
+    text_preview: str = ""
+
+
+class DocAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: list[HistoryTurn] = Field(default_factory=list)
+
+
+class DocCitation(BaseModel):
+    index: int
+    text: str
+
+
+class DocAskResponse(BaseModel):
+    ok: bool = True
+    question: str = ""
+    answer: str = ""
+    citations: list[DocCitation] = Field(default_factory=list)
+    model: str = ""
+    mock: bool = False
+    elapsed_ms: int = 0
+    error: str | None = None

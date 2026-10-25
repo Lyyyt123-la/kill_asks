@@ -3,13 +3,22 @@ import Icon from './Icon.vue'
 
 defineProps({
   datasets: { type: Array, default: () => [] },
+  documents: { type: Array, default: () => [] },
   activeId: { type: String, default: '' },
+  activeDocId: { type: String, default: '' },
   health: { type: Object, default: null }
 })
-const emit = defineEmits(['new-chat', 'select', 'upload'])
+const emit = defineEmits(['new-chat', 'select', 'select-doc', 'upload'])
 
-function onClickDataset(ds) {
-  emit('select', ds)
+function docIcon(doc) {
+  if (['png', 'jpg', 'jpeg', 'webp', 'bmp'].includes(doc.file_type)) return 'image'
+  if (doc.file_type === 'pdf') return 'file-pdf'
+  return 'file-text'
+}
+
+function typeLabel(doc) {
+  const labels = { pdf: 'PDF', docx: 'Word', png: '图片', jpg: '图片', jpeg: '图片', webp: '图片' }
+  return labels[doc.file_type] || String(doc.file_type || '').toUpperCase()
 }
 </script>
 
@@ -44,7 +53,7 @@ function onClickDataset(ds) {
           :key="ds.id"
           class="ds-item"
           :class="{ active: ds.id === activeId }"
-          @click="onClickDataset(ds)"
+          @click="emit('select', ds)"
         >
           <Icon :name="String(ds.source_file || '').toLowerCase().endsWith('.csv') ? 'file-text' : 'database'" :size="14" />
           <div class="ds-meta">
@@ -58,10 +67,32 @@ function onClickDataset(ds) {
     </div>
 
     <div class="side-sec">
+      <div class="side-hd">文档与截图
+        <button class="hd-add" title="上传文档" @click="emit('upload')"><Icon name="plus" :size="13" /></button>
+      </div>
+      <ul class="ds-list">
+        <li
+          v-for="doc in documents"
+          :key="doc.id"
+          class="ds-item"
+          :class="{ active: doc.id === activeDocId }"
+          @click="emit('select-doc', doc)"
+        >
+          <Icon :name="docIcon(doc)" :size="14" />
+          <div class="ds-meta">
+            <b>{{ doc.name }}</b>
+            <span>{{ typeLabel(doc) }} · {{ doc.chars }} 字<template v-if="doc.tables && doc.tables.length"> · {{ doc.tables.length }} 张表</template></span>
+          </div>
+        </li>
+        <li v-if="!documents.length" class="ds-empty">上传 PDF / Word / 截图，自动提取表格并支持文档问答。</li>
+      </ul>
+    </div>
+
+    <div class="side-sec">
       <div class="side-hd">提问灵感</div>
       <div class="tip-card">
         <Icon name="lightbulb" :size="14" />
-        <p>各区域销售额对比<br />双11当天各小时趋势<br />销售额最高的 5 个品类<br />各渠道退款率排名</p>
+        <p>各区域销售额对比<br />双11当天各小时趋势<br />各渠道退款率排名<br />这份报告里华东区表现如何</p>
       </div>
     </div>
 

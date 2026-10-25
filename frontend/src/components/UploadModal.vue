@@ -1,13 +1,16 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from './Icon.vue'
 import { api } from '../api'
 
-const emit = defineEmits(['close', 'uploaded', 'demo'])
+const emit = defineEmits(['close', 'uploaded', 'document-uploaded', 'demo'])
 const dragging = ref(false)
 const uploading = ref(false)
 const error = ref('')
+const statusText = ref('')
 const fileInput = ref(null)
+
+const DOC_EXTS = ['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.webp']
 
 function pick() {
   if (uploading.value) return
@@ -27,25 +30,36 @@ function onDrop(event) {
 
 async function upload(file) {
   const name = String(file.name || '').toLowerCase()
-  if (!(name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xlsm'))) {
-    error.value = '仅支持 .csv / .xlsx / .xlsm 文件'
+  const supported = ['.csv', '.xlsx', '.xlsm', ...DOC_EXTS]
+  if (!supported.some((ext) => name.endsWith(ext))) {
+    error.value = '仅支持 CSV / Excel / PDF / Word / 图片（png、jpg）'
     return
   }
   if (file.size > 30 * 1024 * 1024) {
-    error.value = '文件超过 30MB 限制，请先抽样。'
+    error.value = '文件超过 30MB 限制，请先压缩或抽样。'
     return
   }
   uploading.value = true
   error.value = ''
+  const isDocument = DOC_EXTS.some((ext) => name.endsWith(ext))
+  statusText.value = isDocument ? '正在解析文档 / 识别表格，可能需要几秒…' : '正在解析并建表…'
   try {
-    const dataset = await api.upload(file)
-    emit('uploaded', dataset)
+    if (isDocument) {
+      const doc = await api.uploadDocument(file)
+      emit('document-uploaded', doc)
+    } else {
+      const dataset = await api.upload(file)
+      emit('uploaded', dataset)
+    }
   } catch (exc) {
     error.value = exc.message || '上传失败，请检查文件格式'
   } finally {
     uploading.value = false
+    statusText.value = ''
   }
 }
+
+const accept = computed(() => '.csv,.xlsx,.xlsm,.pdf,.docx,.png,.jpg,.jpeg,.webp')
 </script>
 
 <template>
@@ -53,8 +67,8 @@ async function upload(file) {
     <div class="modal">
       <div class="modal-hd">
         <div>
-          <b>接入数据</b>
-          <span>上传 CSV / Excel，自动识别字段并建表</span>
+          <b>接入数据 / 文档</b>
+          <span>表格直接分析；PDF / Word 提取表格与正文；截图用视觉模型识别</span>
         </div>
         <button class="modal-close" @click="emit('close')"><Icon name="x" :size="16" /></button>
       </div>
@@ -71,22 +85,23 @@ async function upload(file) {
           <template v-if="!uploading">
             <span class="dz-icon"><Icon name="upload" :size="20" /></span>
             <b>点击选择文件，或拖拽到这里</b>
-            <span>支持 CSV / Excel（xlsx），最大 30MB，最多 50 万行</span>
+            <span>CSV / Excel 直接分析 · PDF / Word 提取表格 · 图片走视觉识别</span>
           </template>
           <template v-else>
             <span class="dz-icon"><span class="spinner" style="width:18px;height:18px;border-width:2.5px" /></span>
-            <b>正在解析并建表…</b>
-            <span>大文件可能需要几秒钟</span>
+            <b>{{ statusText }}</b>
+            <span>大文件或图片识别可能需要几秒钟</span>
           </template>
         </div>
-        <input ref="fileInput" type="file" accept=".csv,.xlsx,.xlsm" style="display:none" @change="onFiles($event.target.files)" />
+        <input ref="fileInput" type="file" :accept="accept" style="display:none" @change="onFiles($event.target.files)" />
 
         <div v-if="error" class="upload-error">{{ error }}</div>
 
         <div class="upload-tips">
-          · 首行为表头，支持中文列名与 UTF-8 / GBK 编码；<br />
-          · Excel 默认读取第一个工作表；<br />
-          · 上传后会自动识别时间、数值、布尔字段并生成数据概览。
+          · <b>CSV / Excel</b>：自动识别字段并建表，直接进入分析；<br />
+          · <b>PDF / Word</b>：提取表格变成可分析数据集，正文用于「文档问答」；<br />
+          · <b>图片截图</b>：调用视觉大模型识别表格 → 转成数据集；<br />
+          · 支持中文表头、UTF-8 / GBK 编码，单文件最大 30MB。
         </div>
       </div>
 
@@ -96,7 +111,7 @@ async function upload(file) {
         </button>
         <span class="spacer" />
         <button class="btn-primary" :disabled="uploading" @click="pick">
-          <Icon name="upload" :size="13" />{{ uploading ? '上传中…' : '选择文件' }}
+          <Icon name="upload" :size="13" />{{ uploading ? '解析中…' : '选择文件' }}
         </button>
       </div>
     </div>

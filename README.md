@@ -1,7 +1,16 @@
 # 问数 AskData · 对话式数据分析平台
 
-> 上传 CSV / Excel，用一句自然语言完成 **查询 → 自动 SQL → 图表 → 业务洞察**。
+> 上传 CSV / Excel / PDF / Word / 图片，用一句自然语言完成 **查询 → 自动 SQL → 图表 → 业务洞察 / 文档问答**。
 > 赛题方向：AI 数据分析与可视化（自然语言交互降低数据分析门槛）。
+
+| 作品信息 | 内容 |
+|---|---|
+| 参赛赛道 | AI WEB 网页开发挑战赛 · 赛道二 |
+| 学校 | 广东科贸职业学院 |
+| 指导老师 | 林龙键 |
+| 团队成员 | 罗勇添、辛嘉炜、林俊宁 |
+| 技术文档 | [技术文档 PDF](docs/技术文档_问数AskData.pdf) · [Word 版](docs/技术文档_问数AskData.docx) |
+| 演示视频素材 | [视频脚本与分镜](docs/演示视频脚本.md) · [字幕 SRT](docs/演示视频字幕.srt) |
 
 ![欢迎页](docs/screenshots/01-welcome.png)
 
@@ -10,6 +19,9 @@
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | 数据接入 | ✅ | CSV / Excel 上传，自动识别编码、表头、时间/数值/布尔字段，自动建 DuckDB 表 |
+| 文档接入 | ✅ | PDF / Word 提取正文与表格，表格自动变成可分析数据集 |
+| 图片识别 | ✅ | 截图经视觉大模型（qwen3-vl-plus）识别表格 → CSV → 数据集 |
+| 文档问答 | ✅ | RAG：切片 + 向量/关键词混合检索 + 带引用片段回答 |
 | 数据预览 | ✅ | 网页端查看前 100 行 + 字段列表（类型 / 样例 / 枚举 / 空值率） |
 | 对话式交互 | ✅ | ChatGPT 风格多轮对话，自动携带上一轮 SQL 与结果列，支持追问下钻 |
 | 自然语言转 SQL | ✅ | LLM 生成 DuckDB SQL；未配置 Key 时自动进入规则版演示模式 |
@@ -165,6 +177,22 @@ backend\.venv\Scripts\python.exe scripts\test_api.py
 cd frontend
 node scripts\e2e-screenshots.mjs
 ```
+
+## 在线演示
+
+- 本地演示：`http://127.0.0.1:8000`（后端同时托管前端）
+- 临时公网演示：`https://wicked-stars-care.loca.lt`（隧道，兼容机开机时有效；首次访问如出现 Tunnel Password 提示，密码见 <https://loca.lt/mytunnelpassword>）
+- 长期部署：仓库已提供 `Dockerfile` / `docker-compose.yml` / `render.yaml`，见 [Docker 部署说明](docs/部署指南.md)
+
+## 演示素材
+
+`demo_data/documents/` 内置三份演示文件：
+
+| 文件 | 用途 |
+|---|---|
+| `2025年Q3经营情况报告.pdf` | 演示 PDF 表格提取 + 文档问答（带引用） |
+| `双11大促复盘摘要.docx` | 演示 Word 表格提取 |
+| `各渠道退款率截图.png` | 演示视觉大模型识别截图表格 |
 
 ## 下一步（省赛迭代方向）
 
