@@ -1,4 +1,4 @@
-"""录制演示视频前重置环境：清空历史数据 → 重启后端 → 载入示例数据。
+﻿"""录制演示视频前重置环境：清空历史数据 → 重启后端 → 载入示例数据。
 
 用法（在仓库根目录）：pwsh -ExecutionPolicy Bypass -File scripts\reset_demo.ps1
 """

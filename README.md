@@ -1,4 +1,4 @@
-# 问数 AskData · 对话式数据分析平台
+﻿# 问数 AskData · 对话式数据分析平台
 
 > 上传 CSV / Excel / PDF / Word / 图片，用一句自然语言完成 **查询 → 自动 SQL → 图表 → 业务洞察 / 文档问答**。
 > 赛题方向：AI 数据分析与可视化（自然语言交互降低数据分析门槛）。
@@ -10,7 +10,7 @@
 | 指导老师 | 林龙键 |
 | 团队成员 | 罗勇添、辛嘉炜、林俊宁 |
 | 技术文档 | [技术文档 PDF](docs/技术文档_问数AskData.pdf) · [Word 版](docs/技术文档_问数AskData.docx) |
-| 演示视频素材 | [视频脚本与分镜](docs/演示视频脚本.md) · [字幕 SRT](docs/演示视频字幕.srt) |
+| 演示视频素材 | [视频脚本与分镜](docs/演示视频脚本.md) · [字幕 SRT](docs/演示视频字幕.srt) · [录屏素材 MP4](docs/demo_recording.mp4) |
 
 ![欢迎页](docs/screenshots/01-welcome.png)
 
@@ -65,22 +65,22 @@ git clone https://github.com/Lyyyt123-la/kill_asks.git
 cd kill_asks
 
 # 1. 一键安装依赖 + 生成演示数据（首次执行）
-pwsh -ExecutionPolicy Bypass -File scripts\setup.ps1
+powershell -ExecutionPolicy Bypass -File scripts\\setup.ps1
 
 # 2. 配置大模型（可选：不配置也能以「演示模式」完整运行）
 #    编辑 backend\.env，填入 LLM_API_KEY（智谱 GLM-4-Flash 等 OpenAI 兼容接口）
 #    修改后重启后端即可生效；可用 GET /api/llm/test 验证连通性
 
 # 3. 启动前后端
-pwsh -ExecutionPolicy Bypass -File scripts\dev.ps1
+powershell -ExecutionPolicy Bypass -File scripts\\dev.ps1
 # 打开 http://127.0.0.1:5173
 ```
 
 **生产模式（单端口，方便部署）**：
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File scripts\build.ps1   # 构建前端到 frontend/dist
-pwsh -ExecutionPolicy Bypass -File scripts\dev.ps1     # 或手动启动 uvicorn
+powershell -ExecutionPolicy Bypass -File scripts\\build.ps1   # 构建前端到 frontend/dist
+powershell -ExecutionPolicy Bypass -File scripts\\dev.ps1     # 或手动启动 uvicorn
 # 访问 http://127.0.0.1:8000（FastAPI 直接托管前端）
 ```
 
@@ -181,7 +181,7 @@ node scripts\e2e-screenshots.mjs
 ## 在线演示
 
 - 本地演示：`http://127.0.0.1:8000`（后端同时托管前端）
-- 临时公网演示：`https://quick-news-smash.loca.lt`（隧道，兼容机开机时有效；重启隧道后地址会变化。首次访问如出现 Tunnel Password 提示，密码见 <https://loca.lt/mytunnelpassword>）
+- 临时公网演示：`https://hist-retained-routers-buyer.trycloudflare.com`（Cloudflare 临时隧道，电脑开机时有效；重启隧道后地址会变化，无需密码）
 - 长期部署：仓库已提供 `Dockerfile` / `docker-compose.yml` / `render.yaml`，见 [Docker 部署说明](docs/部署指南.md)
 
 ## 演示素材
@@ -205,3 +205,5 @@ node scripts\e2e-screenshots.mjs
 ---
 
 如有问题或建议，欢迎提 Issue。
+
+
