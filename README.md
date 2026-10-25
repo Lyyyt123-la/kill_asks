@@ -181,7 +181,7 @@ node scripts\e2e-screenshots.mjs
 ## 在线演示
 
 - 本地演示：`http://127.0.0.1:8000`（后端同时托管前端）
-- 临时公网演示：`https://wicked-stars-care.loca.lt`（隧道，兼容机开机时有效；首次访问如出现 Tunnel Password 提示，密码见 <https://loca.lt/mytunnelpassword>）
+- 临时公网演示：`https://quick-news-smash.loca.lt`（隧道，兼容机开机时有效；重启隧道后地址会变化。首次访问如出现 Tunnel Password 提示，密码见 <https://loca.lt/mytunnelpassword>）
 - 长期部署：仓库已提供 `Dockerfile` / `docker-compose.yml` / `render.yaml`，见 [Docker 部署说明](docs/部署指南.md)
 
 ## 演示素材
