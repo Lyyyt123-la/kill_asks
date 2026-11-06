@@ -1,0 +1,27 @@
+{
+  "name": "问数 AskData · 对话式数据分析平台",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "bash .devcontainer/start.sh",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "问数 AskData Web",
+      "onAutoForward": "openPreview"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Vue.volar",
+        "ms-python.python"
+      ]
+    }
+  },
+  "remoteUser": "vscode"
+}

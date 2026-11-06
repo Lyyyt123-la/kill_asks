@@ -34,3 +34,13 @@ Thumbs.db
 # 配音临时目录
 .voiceover*/
 
+
+# 演示视频/音频大文件不提交仓库
+docs/*.mp4
+docs/*.wav
+frontend/.video_timeline.json
+
+frontend/.video_tts/
+frontend/.voice_blocks/
+frontend/.voice_blocks2/
+

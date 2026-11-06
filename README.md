@@ -1,7 +1,10 @@
-﻿# 问数 AskData · 对话式数据分析平台
+# 问数 AskData · 对话式数据分析平台
 
 > 上传 CSV / Excel / PDF / Word / 图片，用一句自然语言完成 **查询 → 自动 SQL → 图表 → 业务洞察 / 文档问答**。
 > 赛题方向：AI 数据分析与可视化（自然语言交互降低数据分析门槛）。
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Lyyyt123-la/kill_asks)
+[![Judge Package](https://img.shields.io/badge/%E8%80%83%E5%AE%98%E5%8C%85-%E4%B8%80%E9%94%AE%E5%AE%89%E8%A3%85-2F6B4F)](docs/部署指南.md)
 
 | 作品信息 | 内容 |
 |---|---|
@@ -54,6 +57,16 @@ FastAPI（Python 3.11+）
    ├─ prompts.py       NL2SQL / SQL 修复 / 洞察 三套 Prompt（技术文档可直接引用）
    └─ store.py         SQLite 存数据集元数据
 ```
+
+## 云端一键体验（GitHub Codespaces）
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Lyyyt123-la/kill_asks)
+
+点击徽章即可在浏览器中创建云端环境（无需本地安装 Python / Node），首次约 2–4 分钟自动安装依赖、构建前端并启动服务，8000 端口会自动转发打开。
+
+- 未配置模型 Key：自动进入**演示模式**，界面、图表、SQL、文档问答均可完整体验；
+- 想用真实模型：仓库 **Settings → Secrets and variables → Codespaces** 新建 `LLM_API_KEY`（百炼 Key），重建 Codespace 后生效；
+- 手动重装：终端执行 `bash .devcontainer/setup.sh`；启动：`bash .devcontainer/start.sh`。
 
 ## 快速开始（Windows，已验证）
 
