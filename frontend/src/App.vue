@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from './api'
 import Sidebar from './components/Sidebar.vue'
@@ -13,7 +13,8 @@ const EXAMPLES = [
   '各区域的销售额对比',
   '双11当天各小时销售额趋势',
   '销售额最高的5个品类',
-  '各渠道的退款率排名'
+  '各渠道的退款率排名',
+  '各品类销售额占比'
 ]
 
 const health = ref(null)
@@ -337,3 +338,4 @@ async function onAnalyzeDataset(datasetId) {
     <div v-if="toast" class="toast">{{ toast }}</div>
   </div>
 </template>
+

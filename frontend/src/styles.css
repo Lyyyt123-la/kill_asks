@@ -422,3 +422,30 @@ a { color: inherit; text-decoration: none; }
   .sidebar, .side { width: 248px; }
   .thread, .composer, .composer-hint { width: 760px; }
 }
+
+/* ================= 图表可读性增强 + 购物袋创意视图 ================= */
+.chart-title { font-size: 19px; }
+.chart-sub { font-size: 12.5px; }
+.chart-kicker { font-size: 11.5px; }
+.chart-type { font-size: 12px; height: 28px; padding: 0 9px; }
+.chart-theme { font-size: 12px; height: 28px; }
+.chart-kpi { padding: 10px 14px; }
+.kpi-label { font-size: 11.5px; }
+.kpi-value { font-size: 18px; }
+.kpi-hint { font-size: 11.5px; }
+.echart { height: 340px; }
+.chart-ft { font-size: 12px; }
+.btn-mini { font-size: 12px; height: 27px; }
+.data-table { font-size: 13px; }
+.data-table th, .data-table td { padding: 8px 12px; }
+.chart-reason { margin: 2px 18px 0; font-size: 11.5px; color: var(--faint); }
+.chart-reason b { margin-right: 5px; color: var(--brand); font-weight: 700; }
+.rec-badge { margin-left: 2px; padding: 1px 5px; border-radius: 4px; background: var(--brand-tint); color: var(--brand); font-size: 9.5px; font-weight: 700; }
+.chart-type.recommended { border: 1px dashed rgba(47, 107, 79, .35); }
+.bag-chart { padding: 0 4px; }
+.bag-chart svg { width: 100%; height: auto; display: block; }
+
+.chart-card.theme-dark .chart-reason { color: #8FA898; }
+.chart-card.theme-dark .chart-reason b { color: #9FD3AE; }
+.chart-card.theme-dark .rec-badge { background: rgba(159, 211, 174, .14); color: #9FD3AE; }
+.chart-card.theme-dark .chart-type.recommended { border-color: rgba(159, 211, 174, .35); }
