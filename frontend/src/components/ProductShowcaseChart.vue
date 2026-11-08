@@ -1,12 +1,12 @@
-﻿<script setup>
+<script setup>
 import { computed, onMounted, ref } from 'vue'
 
 /**
- * 商品图可视化（商品为主体，浅色比例填充，无边框）
- * - 每个品类一张商品图片（emoji 作为基础商品图）
- * - 图片本身作为主体，底部浅色色块按销售额占比升起
- * - 品类名称居中显示在图片下方，百分比显示在图片上方
- * - 每行最多 4 个，按左→右、上→下排列，不画购物袋、不画边框
+ * 商品图可视化（第三版，按反馈重做）
+ * - 商品图像本身作为底：整体灰度渲染
+ * - 颜色在“图像内部”按占比从下往上填充（彩色剪影遮罩 + 底部裁剪）
+ * - 不同品类不同颜色，低饱和浅色
+ * - 不画购物袋、不画边框；每行 4 个，左→右、上→下排列
  */
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -15,12 +15,22 @@ const props = defineProps({
 })
 
 const wrapRef = ref(null)
-const mounted = ref(false)
-onMounted(() => requestAnimationFrame(() => { mounted.value = true }))
+const growth = ref(0)
+const uid = Math.random().toString(36).slice(2, 8)
 
-const COLS = 4
-// 浅色、低饱和的品类色（比例填充用）
-const PALETTE = ['#B9D6C5', '#F2D3A2', '#F0B8AE', '#B8D0E3', '#D6C6E8', '#B9DDD4', '#E7DAB2', '#CBD4DE']
+onMounted(() => {
+  const started = performance.now()
+  const duration = 800
+  const tick = (now) => {
+    const progress = Math.min(1, (now - started) / duration)
+    growth.value = 1 - Math.pow(1 - progress, 3)
+    if (progress < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+})
+
+// 低饱和浅色（图像内部占比色）
+const FILL_COLORS = ['#8FC5A8', '#EAC17C', '#E5A79B', '#8FB8D6', '#BBA1D8', '#8FCBBE', '#D8C892', '#AEBFD2']
 
 const ICON_MAP = [
   [/女装|连衣裙|裙|女鞋/, '👗'],
@@ -61,27 +71,99 @@ const sorted = computed(() =>
 )
 const total = computed(() => sorted.value.reduce((sum, item) => sum + Number(item.value), 0) || 1)
 
+const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Microsoft YaHei", sans-serif'
+const RENDER_SIZE = 240
+
+function drawEmoji(ctx, icon, size) {
+  ctx.font = `${Math.round(size * 0.82)}px ${EMOJI_FONT}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(icon, size / 2, size / 2 + size * 0.03)
+}
+
+/** 灰度商品图 */
+function grayImage(icon) {
+  const canvas = document.createElement('canvas')
+  canvas.width = RENDER_SIZE
+  canvas.height = RENDER_SIZE
+  const ctx = canvas.getContext('2d')
+  ctx.filter = 'grayscale(1) contrast(0.96) brightness(1.14)'
+  drawEmoji(ctx, icon, RENDER_SIZE)
+  return canvas.toDataURL('image/png')
+}
+
+/** 纯色剪影（用商品图 alpha 做遮罩，内部填充品类颜色） */
+function colorSilhouette(icon, color) {
+  const canvas = document.createElement('canvas')
+  canvas.width = RENDER_SIZE
+  canvas.height = RENDER_SIZE
+  const ctx = canvas.getContext('2d')
+  drawEmoji(ctx, icon, RENDER_SIZE)
+  ctx.globalCompositeOperation = 'source-in'
+  ctx.fillStyle = color
+  ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE)
+  return canvas.toDataURL('image/png')
+}
+
+/** 检测 emoji 实际像素范围（避免把颜色裁到图形之外） */
+function measureEmoji(icon) {
+  const canvas = document.createElement('canvas')
+  canvas.width = RENDER_SIZE
+  canvas.height = RENDER_SIZE
+  const ctx = canvas.getContext('2d')
+  drawEmoji(ctx, icon, RENDER_SIZE)
+  const data = ctx.getImageData(0, 0, RENDER_SIZE, RENDER_SIZE).data
+  let minX = RENDER_SIZE
+  let minY = RENDER_SIZE
+  let maxX = 0
+  let maxY = 0
+  for (let y = 0; y < RENDER_SIZE; y += 1) {
+    for (let x = 0; x < RENDER_SIZE; x += 1) {
+      const alpha = data[(y * RENDER_SIZE + x) * 4 + 3]
+      if (alpha > 12) {
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  if (maxX <= minX || maxY <= minY) return { x: 0, y: 0, w: 1, h: 1 }
+  return {
+    x: minX / RENDER_SIZE,
+    y: minY / RENDER_SIZE,
+    w: (maxX - minX + 1) / RENDER_SIZE,
+    h: (maxY - minY + 1) / RENDER_SIZE
+  }
+}
+
 const nodes = computed(() =>
   sorted.value.map((item, index) => {
     const value = Number(item.value)
     const percent = Number.isFinite(Number(item.percent)) ? Number(item.percent) : (value / total.value) * 100
+    const color = FILL_COLORS[index % FILL_COLORS.length]
+    const icon = iconOf(item.name)
     return {
       name: String(item.name ?? '未分类'),
       value,
       share: Boolean(item.share),
       percent,
-      color: PALETTE[index % PALETTE.length],
-      icon: iconOf(item.name)
+      color,
+      icon,
+      bbox: measureEmoji(icon),
+      graySrc: grayImage(icon),
+      colorSrc: colorSilhouette(icon, color)
     }
   })
 )
 
-const rows = computed(() => Math.max(1, Math.ceil(nodes.value.length / COLS)))
-
+// ---------------- 布局 ----------------
+const COLS = 4
 const W = 900
-const H = 520
-const AREA = { x: 34, y: 96, w: 832, h: 396 }
+const H = 480
+const AREA = { x: 34, y: 106, w: 832, h: 336 }
 const GAP = 18
+const rows = computed(() => Math.max(1, Math.ceil(nodes.value.length / COLS)))
 const COLS_N = computed(() => Math.min(COLS, Math.max(1, nodes.value.length)))
 const ITEM_W = computed(() => (AREA.w - GAP * (COLS_N.value - 1)) / COLS_N.value)
 const ITEM_H = computed(() => (AREA.h - GAP * (rows.value - 1)) / rows.value)
@@ -90,6 +172,38 @@ function posOf(index) {
   const row = Math.floor(index / COLS)
   const col = index % COLS
   return { x: AREA.x + col * (ITEM_W.value + GAP), y: AREA.y + row * (ITEM_H.value + GAP) }
+}
+
+const iconSizeOf = computed(() => Math.max(72, Math.min(112, ITEM_H.value - 62)))
+const iconYOf = computed(() => Math.round((ITEM_H.value - iconSizeOf.value) / 2) + 8)
+
+function clipId(index) {
+  return `${uid}-clip-${index}`
+}
+
+function effectivePercent(node) {
+  return Math.max(0, Math.min(100, node.percent * growth.value))
+}
+
+/** 依据商品图实际像素范围计算“液面裁剪区域” */
+function clipRect(index) {
+  const node = nodes.value[index]
+  if (!node) return { x: 0, y: 0, width: 0, height: 0 }
+  const pos = posOf(index)
+  const size = iconSizeOf.value
+  const imageX = pos.x + (ITEM_W.value - size) / 2
+  const imageY = pos.y + iconYOf.value
+  const boxX = imageX + node.bbox.x * size
+  const boxY = imageY + node.bbox.y * size
+  const boxW = Math.max(1, node.bbox.w * size)
+  const boxH = Math.max(1, node.bbox.h * size)
+  const percent = effectivePercent(node) / 100
+  return {
+    x: boxX,
+    y: boxY + boxH * (1 - percent),
+    width: boxW,
+    height: Math.max(0, boxH * percent)
+  }
 }
 
 function fmt(value) {
@@ -130,7 +244,15 @@ defineExpose({ toDataURL })
 
 <template>
   <div ref="wrapRef" class="product-showcase">
-    <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="品类商品图与占比">
+    <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="商品图内部占比可视化">
+      <defs>
+        <clipPath v-for="(node, index) in nodes" :id="clipId(index)" :key="clipId(index)" clipPathUnits="userSpaceOnUse">
+          <rect
+            v-bind="clipRect(index)"
+          />
+        </clipPath>
+      </defs>
+
       <!-- 顶部标题，无边框 -->
       <text
         :x="AREA.x"
@@ -150,37 +272,20 @@ defineExpose({ toDataURL })
       >{{ totalLabel || ('合计 ' + fmt(total) + ' 元') }}</text>
       <text
         :x="AREA.x"
-        :y="62"
+        :y="64"
         :fill="th.subtle"
         font-size="14"
         font-family="Microsoft YaHei, PingFang SC, sans-serif"
-      >商品图片 = 品类 · 浅色区域由下往上表示销售额占比</text>
+      >灰色商品图做底 · 颜色在图像内部由下往上显示占比</text>
 
       <!-- 商品图排列（无边框） -->
-      <g v-for="(node, index) in nodes" :key="node.name" :transform="`translate(${posOf(index).x}, ${posOf(index).y})`">
+      <g v-for="(node, index) in nodes" :key="node.name">
         <title>{{ node.name }}：{{ node.share ? ('占比 ' + node.percent.toFixed(2) + '%') : ('销售额 ' + fmt(node.value) + ' 元') }}</title>
-
-        <!-- 浅色比例区域（从下往上，无描边） -->
-        <rect
-          :x="0"
-          :y="ITEM_H * (1 - Math.min(100, node.percent) / 100)"
-          :width="ITEM_W"
-          :height="ITEM_H * (Math.min(100, node.percent) / 100)"
-          rx="26"
-          :fill="node.color"
-          fill-opacity="0.55"
-          :style="{
-            transformBox: 'fill-box',
-            transformOrigin: '50% 100%',
-            transform: mounted ? 'scaleY(1)' : 'scaleY(0)',
-            transition: 'transform .8s cubic-bezier(.2,.7,.2,1)'
-          }"
-        />
 
         <!-- 百分比 -->
         <text
-          :x="ITEM_W / 2"
-          :y="26"
+          :x="posOf(index).x + ITEM_W / 2"
+          :y="posOf(index).y + 24"
           :fill="th.ink"
           font-size="22"
           font-weight="800"
@@ -188,28 +293,36 @@ defineExpose({ toDataURL })
           font-family="Microsoft YaHei, PingFang SC, sans-serif"
         >{{ node.percent.toFixed(1) }}%</text>
 
-        <!-- 商品图片（主体，尽量大） -->
-        <text
-          :x="ITEM_W / 2"
-          :y="ITEM_H * 0.45"
-          font-size="66"
-          text-anchor="middle"
-          dominant-baseline="middle"
-        >{{ node.icon }}</text>
+        <!-- 灰色商品图做底 -->
+        <image
+          :href="node.graySrc"
+          :x="posOf(index).x + (ITEM_W - iconSizeOf) / 2"
+          :y="posOf(index).y + iconYOf"
+          :width="iconSizeOf"
+          :height="iconSizeOf"
+          preserveAspectRatio="xMidYMid meet"
+        />
+
+        <!-- 图像内部的彩色占比（彩色剪影 + 底部裁剪） -->
+        <image
+          :href="node.colorSrc"
+          :x="posOf(index).x + (ITEM_W - iconSizeOf) / 2"
+          :y="posOf(index).y + iconYOf"
+          :width="iconSizeOf"
+          :height="iconSizeOf"
+          preserveAspectRatio="xMidYMid meet"
+          :clip-path="`url(#${clipId(index)})`"
+        />
 
         <!-- 品类名称：图片正中下方 -->
         <text
-          :x="ITEM_W / 2"
-          :y="ITEM_H * 0.78"
+          :x="posOf(index).x + ITEM_W / 2"
+          :y="posOf(index).y + iconYOf + iconSizeOf + 28"
           :fill="th.ink"
           font-size="19"
           font-weight="700"
           text-anchor="middle"
           font-family="Microsoft YaHei, PingFang SC, sans-serif"
-          stroke="#FFFEFB"
-          stroke-width="3"
-          paint-order="stroke"
-          :stroke-opacity="theme === 'light' ? 0.9 : 0"
         >{{ node.name }}</text>
       </g>
 
@@ -237,4 +350,3 @@ defineExpose({ toDataURL })
   display: block;
 }
 </style>
-
