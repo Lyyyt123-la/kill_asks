@@ -1,12 +1,12 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, ref } from 'vue'
 
 /**
- * 购物袋创意可视化（SVG 自绘）
- * - 购物袋代表“全部品类销售额 = 100%”
- * - 每个品类一个商品图标，图标名称居中显示在图标下方
- * - 图标底部液面按销售额占比填充，不同品类不同颜色
- * - 每行最多 4 个，超出按左→右、上→下换行
+ * 商品图可视化（商品为主体，浅色比例填充，无边框）
+ * - 每个品类一张商品图片（emoji 作为基础商品图）
+ * - 图片本身作为主体，底部浅色色块按销售额占比升起
+ * - 品类名称居中显示在图片下方，百分比显示在图片上方
+ * - 每行最多 4 个，按左→右、上→下排列，不画购物袋、不画边框
  */
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -14,12 +14,13 @@ const props = defineProps({
   totalLabel: { type: String, default: '' }
 })
 
-const bagRef = ref(null)
+const wrapRef = ref(null)
 const mounted = ref(false)
 onMounted(() => requestAnimationFrame(() => { mounted.value = true }))
 
 const COLS = 4
-const PALETTE = ['#2F6B4F', '#E8A33D', '#D96C5F', '#4C8DAE', '#8B6BB1', '#4FA391', '#C4A45A', '#7C8B9E']
+// 浅色、低饱和的品类色（比例填充用）
+const PALETTE = ['#B9D6C5', '#F2D3A2', '#F0B8AE', '#B8D0E3', '#D6C6E8', '#B9DDD4', '#E7DAB2', '#CBD4DE']
 
 const ICON_MAP = [
   [/女装|连衣裙|裙|女鞋/, '👗'],
@@ -48,28 +49,8 @@ function iconOf(name) {
 }
 
 const THEMES = {
-  light: {
-    bg: '#FFFEFB',
-    bag: '#F6F3EA',
-    bagStroke: '#D9D2C2',
-    tile: '#E9E5DA',
-    ink: '#2B2823',
-    muted: '#7A7468',
-    subtle: '#A39C8D',
-    textOnFill: '#FFFFFF',
-    darkText: '#2B2823'
-  },
-  dark: {
-    bg: '#17201B',
-    bag: '#1E2A23',
-    bagStroke: '#31443A',
-    tile: '#2A3A30',
-    ink: '#EDF4EE',
-    muted: '#9DB7A6',
-    subtle: '#7B9485',
-    textOnFill: '#FFFFFF',
-    darkText: '#EDF4EE'
-  }
+  light: { bg: '#FFFEFB', ink: '#2B2823', muted: '#7A7468', subtle: '#A39C8D' },
+  dark: { bg: '#17201B', ink: '#EDF4EE', muted: '#9DB7A6', subtle: '#7B9485' }
 }
 const th = computed(() => THEMES[props.theme] || THEMES.light)
 
@@ -97,35 +78,18 @@ const nodes = computed(() =>
 
 const rows = computed(() => Math.max(1, Math.ceil(nodes.value.length / COLS)))
 
-// 画布与布局
-const W = 860
-const H = 600
-const BAG = { x: 74, y: 108, w: 712, h: 456, r: 46 }
-const PAD = 36
+const W = 900
+const H = 520
+const AREA = { x: 34, y: 96, w: 832, h: 396 }
 const GAP = 18
-const HEADER_H = 58
-const TILE_W = (BAG.w - PAD * 2 - GAP * (COLS - 1)) / COLS
-const TILE_H = computed(() => {
-  const available = BAG.h - PAD * 2 - HEADER_H
-  return Math.min(168, (available - GAP * (rows.value - 1)) / rows.value)
-})
+const COLS_N = computed(() => Math.min(COLS, Math.max(1, nodes.value.length)))
+const ITEM_W = computed(() => (AREA.w - GAP * (COLS_N.value - 1)) / COLS_N.value)
+const ITEM_H = computed(() => (AREA.h - GAP * (rows.value - 1)) / rows.value)
 
 function posOf(index) {
   const row = Math.floor(index / COLS)
   const col = index % COLS
-  return {
-    x: BAG.x + PAD + col * (TILE_W + GAP),
-    y: BAG.y + PAD + HEADER_H + row * (TILE_H.value + GAP)
-  }
-}
-
-function fillPercent(node) {
-  return Math.max(0, Math.min(100, node.percent))
-}
-
-function textColorAt(node, yRatio) {
-  // 液面从底部升起，文字位置低于液面时用白色，否则用深色
-  return yRatio >= 1 - node.percent / 100 ? th.value.textOnFill : th.value.ink
+  return { x: AREA.x + col * (ITEM_W.value + GAP), y: AREA.y + row * (ITEM_H.value + GAP) }
 }
 
 function fmt(value) {
@@ -137,7 +101,7 @@ function fmt(value) {
 }
 
 function toDataURL(backgroundColor) {
-  const svg = bagRef.value?.querySelector('svg')
+  const svg = wrapRef.value?.querySelector('svg')
   if (!svg) return ''
   const clone = svg.cloneNode(true)
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
@@ -165,116 +129,90 @@ defineExpose({ toDataURL })
 </script>
 
 <template>
-  <div ref="bagRef" class="bag-chart">
-    <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="品类销售额购物袋图">
-      <!-- 提手 -->
-      <path
-        :d="`M ${BAG.x + BAG.w * 0.28} ${BAG.y + 10} C ${BAG.x + BAG.w * 0.3} ${BAG.y - 46}, ${BAG.x + BAG.w * 0.7} ${BAG.y - 46}, ${BAG.x + BAG.w * 0.72} ${BAG.y + 10}`"
-        fill="none"
-        :stroke="th.bagStroke"
-        stroke-width="20"
-        stroke-linecap="round"
-      />
-      <!-- 袋子主体 -->
-      <rect
-        :x="BAG.x"
-        :y="BAG.y"
-        :width="BAG.w"
-        :height="BAG.h"
-        :rx="BAG.r"
-        :fill="th.bag"
-        :stroke="th.bagStroke"
-        stroke-width="3"
-      />
-      <rect
-        :x="BAG.x + 10"
-        :y="BAG.y + 10"
-        :width="BAG.w - 20"
-        :height="BAG.h - 20"
-        :rx="BAG.r - 7"
-        fill="none"
-        :stroke="th.bagStroke"
-        stroke-width="1"
-        stroke-dasharray="7 9"
-        opacity="0.55"
-      />
-      <!-- 袋内标题 -->
+  <div ref="wrapRef" class="product-showcase">
+    <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="品类商品图与占比">
+      <!-- 顶部标题，无边框 -->
       <text
-        :x="BAG.x + PAD"
-        :y="BAG.y + 44"
+        :x="AREA.x"
+        :y="34"
         :fill="th.ink"
-        font-size="23"
+        font-size="22"
         font-weight="700"
         font-family="Microsoft YaHei, PingFang SC, sans-serif"
       >品类销售构成 · 100%</text>
       <text
-        :x="BAG.x + BAG.w - PAD"
-        :y="BAG.y + 44"
+        :x="AREA.x + AREA.w"
+        :y="34"
         :fill="th.muted"
         font-size="16"
         text-anchor="end"
         font-family="Microsoft YaHei, PingFang SC, sans-serif"
       >{{ totalLabel || ('合计 ' + fmt(total) + ' 元') }}</text>
       <text
-        :x="BAG.x + PAD"
-        :y="BAG.y + 68"
+        :x="AREA.x"
+        :y="62"
         :fill="th.subtle"
-        font-size="15"
+        font-size="14"
         font-family="Microsoft YaHei, PingFang SC, sans-serif"
-      >每个图标代表一个品类 · 液面高度 = 销售额占比 · 按左→右、上→下排列</text>
+      >商品图片 = 品类 · 浅色区域由下往上表示销售额占比</text>
 
-      <!-- 品类图标格 -->
+      <!-- 商品图排列（无边框） -->
       <g v-for="(node, index) in nodes" :key="node.name" :transform="`translate(${posOf(index).x}, ${posOf(index).y})`">
         <title>{{ node.name }}：{{ node.share ? ('占比 ' + node.percent.toFixed(2) + '%') : ('销售额 ' + fmt(node.value) + ' 元') }}</title>
-        <!-- 灰色底 -->
-        <rect :width="TILE_W" :height="TILE_H" rx="18" :fill="th.tile" />
-        <!-- 百分比液面（从下往上） -->
+
+        <!-- 浅色比例区域（从下往上，无描边） -->
         <rect
-          :width="TILE_W"
-          :height="TILE_H"
-          rx="18"
+          :x="0"
+          :y="ITEM_H * (1 - Math.min(100, node.percent) / 100)"
+          :width="ITEM_W"
+          :height="ITEM_H * (Math.min(100, node.percent) / 100)"
+          rx="26"
           :fill="node.color"
-          opacity="0.94"
+          fill-opacity="0.55"
           :style="{
             transformBox: 'fill-box',
             transformOrigin: '50% 100%',
-            transform: mounted ? `scaleY(${fillPercent(node) / 100})` : 'scaleY(0)',
-            transition: 'transform .85s cubic-bezier(.2,.7,.2,1)'
+            transform: mounted ? 'scaleY(1)' : 'scaleY(0)',
+            transition: 'transform .8s cubic-bezier(.2,.7,.2,1)'
           }"
         />
+
         <!-- 百分比 -->
         <text
-          :x="TILE_W / 2"
-          :y="TILE_H * 0.24"
-          :fill="textColorAt(node, 0.24)"
-          font-size="20"
+          :x="ITEM_W / 2"
+          :y="26"
+          :fill="th.ink"
+          font-size="22"
           font-weight="800"
           text-anchor="middle"
           font-family="Microsoft YaHei, PingFang SC, sans-serif"
         >{{ node.percent.toFixed(1) }}%</text>
-        <!-- 商品图标 -->
+
+        <!-- 商品图片（主体，尽量大） -->
         <text
-          :x="TILE_W / 2"
-          :y="TILE_H * 0.53"
-          font-size="36"
+          :x="ITEM_W / 2"
+          :y="ITEM_H * 0.45"
+          font-size="66"
           text-anchor="middle"
           dominant-baseline="middle"
         >{{ node.icon }}</text>
-        <!-- 图标名称（居中在图标下方） -->
+
+        <!-- 品类名称：图片正中下方 -->
         <text
-          :x="TILE_W / 2"
-          :y="TILE_H * 0.78"
-          :fill="textColorAt(node, 0.78)"
-          font-size="16"
+          :x="ITEM_W / 2"
+          :y="ITEM_H * 0.78"
+          :fill="th.ink"
+          font-size="19"
           font-weight="700"
           text-anchor="middle"
           font-family="Microsoft YaHei, PingFang SC, sans-serif"
+          stroke="#FFFEFB"
+          stroke-width="3"
+          paint-order="stroke"
+          :stroke-opacity="theme === 'light' ? 0.9 : 0"
         >{{ node.name }}</text>
-        <!-- 颜色标识线 -->
-        <rect :x="TILE_W / 2 - 16" :y="TILE_H - 20" width="32" height="4" rx="2" :fill="node.color" opacity="0.95" />
       </g>
 
-      <!-- 空态 -->
       <text
         v-if="!nodes.length"
         :x="W / 2"
@@ -283,17 +221,17 @@ defineExpose({ toDataURL })
         font-size="18"
         text-anchor="middle"
         font-family="Microsoft YaHei, PingFang SC, sans-serif"
-      >没有可用于占比展示的品类数据</text>
+      >没有可用于展示的商品数据</text>
     </svg>
   </div>
 </template>
 
 <style scoped>
-.bag-chart {
+.product-showcase {
   width: 100%;
   padding: 0 4px;
 }
-.bag-chart svg {
+.product-showcase svg {
   width: 100%;
   height: auto;
   display: block;

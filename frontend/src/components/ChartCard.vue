@@ -1,8 +1,8 @@
-<script setup>
+﻿<script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import Icon from './Icon.vue'
-import ShoppingBagChart from './ShoppingBagChart.vue'
+import ProductShowcaseChart from './ProductShowcaseChart.vue'
 
 const props = defineProps({
   chart: { type: Object, default: () => ({}) },
@@ -12,12 +12,12 @@ const props = defineProps({
 // 更丰富的分类色板（品牌绿 + 琥珀 + 珊瑚 + 蓝 + 紫 + 青 + 金 + 灰蓝）
 const COLORS = ['#2F6B4F', '#E8A33D', '#D96C5F', '#4C8DAE', '#8B6BB1', '#4FA391', '#C4A45A', '#7C8B9E']
 const TYPES = [
-  { type: 'bag', label: '购物袋', icon: 'shopping-bag' },
+  { type: 'bag', label: '商品图', icon: 'image' },
   { type: 'line', label: '折线', icon: 'line-chart' },
   { type: 'bar', label: '柱状', icon: 'bar-chart' },
   { type: 'pie', label: '环形', icon: 'pie-chart' }
 ]
-const KIND_LABELS = { bag: '创意构成', line: '趋势分析', bar: '对比分析', pie: '占比分析', table: '数据明细' }
+const KIND_LABELS = { bag: '商品展示', line: '趋势分析', bar: '对比分析', pie: '占比分析', table: '数据明细' }
 const THEMES = {
   light: {
     bg: '#FFFEFB', panel: '#FFFFFF', ink: '#2B2823', text: '#5E594E', muted: '#8C8678',
@@ -136,7 +136,7 @@ const recommendation = computed(() => {
   if (temporal) return { type: 'line', reason: '检测到时间字段 → 趋势用折线更直观' }
   if (single && count > 12) return { type: 'line', reason: '数据点较多 → 折线图更能看清变化' }
   if (single && /品类|商品|类目|类别/.test(title) && count >= 4 && count <= 12) {
-    return { type: 'bag', reason: '品类构成 → 购物袋图更有画面感' }
+    return { type: 'bag', reason: '品类构成 → 商品图展示更有画面感' }
   }
   if (single && /占比|比例|份额|构成|分布|贡献|结构/.test(title) && count <= 10) {
     return { type: 'pie', reason: '占比关系 → 环形图更直观' }
@@ -624,7 +624,7 @@ watch(
 
     <div class="chart-body">
       <div v-show="!showTable && type !== 'bag'" ref="chartEl" class="echart" />
-      <ShoppingBagChart v-if="!showTable && type === 'bag'" ref="bagRef" :items="bagItems" :theme="theme" :total-label="bagTotalLabel" />
+      <ProductShowcaseChart v-if="!showTable && type === 'bag'" ref="bagRef" :items="bagItems" :theme="theme" :total-label="bagTotalLabel" />
       <div v-if="!hasData" class="chart-empty">没有查询到符合条件的数据</div>
       <div v-if="showTable && hasData" class="table-scroll">
         <table class="data-table">
@@ -657,3 +657,4 @@ watch(
     </div>
   </figure>
 </template>
+

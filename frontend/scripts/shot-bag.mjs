@@ -1,4 +1,4 @@
-/** 购物袋图 + 推荐图表验证截图。 */
+﻿/** 购物袋图 + 推荐图表验证截图。 */
 import { chromium } from 'playwright-core'
 import fs from 'node:fs'
 
@@ -35,7 +35,7 @@ try {
 
   await ask('各品类销售额占比')
   await page.waitForSelector('.chart-card', { timeout: 120000 })
-  await page.waitForFunction(() => document.querySelectorAll('.bag-chart svg').length >= 1, null, { timeout: 60000 })
+  await page.waitForFunction(() => document.querySelectorAll('.product-showcase svg').length >= 1, null, { timeout: 60000 })
   await page.waitForTimeout(2200)
   await shot('01-bag-card.png')
   await page.screenshot({ path: `${OUT}/01-bag-full.png` })
@@ -67,3 +67,4 @@ try {
 } finally {
   await browser.close()
 }
+
