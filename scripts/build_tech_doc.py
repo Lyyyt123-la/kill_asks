@@ -173,7 +173,7 @@ def cover(document: Document) -> None:
         ("学　　校", "广东科贸职业学院"),
         ("指导老师", "林龙键"),
         ("团队成员", "罗勇添、辛嘉炜、林俊宁"),
-        ("提交日期", "2026 年 10 月"),
+        ("提交日期", "2026 年 11 月"),
     ]
     table = document.add_table(rows=len(info), cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
