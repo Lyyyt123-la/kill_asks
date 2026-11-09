@@ -1,12 +1,12 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 /**
- * 商品图可视化（第三版，按反馈重做）
- * - 商品图像本身作为底：整体灰度渲染
- * - 颜色在“图像内部”按占比从下往上填充（彩色剪影遮罩 + 底部裁剪）
- * - 不同品类不同颜色，低饱和浅色
- * - 不画购物袋、不画边框；每行 4 个，左→右、上→下排列
+ * 商品图可视化（完善版）
+ * - 用 Canvas 自绘统一风格的商品图形（不依赖系统 emoji）
+ * - 商品图整体灰色做底，彩色只在图像内部按占比从下往上填充
+ * - 百分比数字随填充一起从 0 涨到实际值
+ * - 每行最多 4 个；窄屏自动 3/2 列；不画袋子、不画边框
  */
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -16,47 +16,39 @@ const props = defineProps({
 
 const wrapRef = ref(null)
 const growth = ref(0)
+const wrapWidth = ref(900)
 const uid = Math.random().toString(36).slice(2, 8)
+let observer = null
 
-onMounted(() => {
+function startGrowth() {
   const started = performance.now()
-  const duration = 800
+  const duration = 820
   const tick = (now) => {
     const progress = Math.min(1, (now - started) / duration)
     growth.value = 1 - Math.pow(1 - progress, 3)
     if (progress < 1) requestAnimationFrame(tick)
   }
   requestAnimationFrame(tick)
+}
+
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined' && wrapRef.value) {
+    observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect?.width
+      if (width) wrapWidth.value = width
+    })
+    observer.observe(wrapRef.value)
+  }
+  startGrowth()
+})
+
+onBeforeUnmount(() => {
+  if (observer) observer.disconnect()
 })
 
 // 低饱和浅色（图像内部占比色）
 const FILL_COLORS = ['#8FC5A8', '#EAC17C', '#E5A79B', '#8FB8D6', '#BBA1D8', '#8FCBBE', '#D8C892', '#AEBFD2']
-
-const ICON_MAP = [
-  [/女装|连衣裙|裙|女鞋/, '👗'],
-  [/男装|男鞋|衬衫/, '👔'],
-  [/美妆|化妆|护肤|口红/, '💄'],
-  [/食品|零食|生鲜|水果/, '🍎'],
-  [/3C|数码|手机|电脑|电子/, '📱'],
-  [/家居|家纺|家具/, '🛋️'],
-  [/母婴|婴童|奶粉/, '🍼'],
-  [/运动|户外|健身/, '⚽'],
-  [/鞋|靴/, '👟'],
-  [/箱包|包/, '👜'],
-  [/图书|书/, '📚'],
-  [/家电|电器/, '🔌'],
-  [/宠物/, '🐾'],
-  [/汽车|车品/, '🚗'],
-  [/珠宝|饰品/, '💍'],
-  [/饮料|酒/, '🥤']
-]
-
-function iconOf(name) {
-  for (const [pattern, icon] of ICON_MAP) {
-    if (pattern.test(String(name))) return icon
-  }
-  return '🛍️'
-}
+const GRAY_FILL = '#B9B5AC'
 
 const THEMES = {
   light: { bg: '#FFFEFB', ink: '#2B2823', muted: '#7A7468', subtle: '#A39C8D' },
@@ -64,54 +56,254 @@ const THEMES = {
 }
 const th = computed(() => THEMES[props.theme] || THEMES.light)
 
-const sorted = computed(() =>
-  [...props.items]
-    .filter((item) => Number.isFinite(Number(item.value)) && Number(item.value) > 0)
-    .sort((a, b) => Number(b.value) - Number(a.value))
-)
-const total = computed(() => sorted.value.reduce((sum, item) => sum + Number(item.value), 0) || 1)
+// 品类 → 自绘商品图形
+const KIND_RULES = [
+  [/女装|连衣裙|裙|女鞋/, 'dress'],
+  [/男装|男鞋|衬衫/, 'shirt'],
+  [/美妆|化妆|护肤|口红/, 'lipstick'],
+  [/食品|零食|生鲜|水果/, 'apple'],
+  [/3C|数码|手机|电脑|电子/, 'phone'],
+  [/家居|家纺|家具/, 'sofa'],
+  [/母婴|婴童|奶粉|饮料|酒|水/, 'bottle'],
+  [/运动|户外|健身|鞋|靴/, 'shoe'],
+  [/箱包|包/, 'bag'],
+  [/图书|书/, 'book'],
+  [/家电|电器|冰箱/, 'fridge'],
+  [/珠宝|饰品/, 'ring'],
+  [/宠物/, 'paw'],
+  [/汽车|车品/, 'car']
+]
 
-const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Microsoft YaHei", sans-serif'
+function kindOf(name) {
+  for (const [pattern, kind] of KIND_RULES) {
+    if (pattern.test(String(name))) return kind
+  }
+  return 'box'
+}
+
+// 用 100×100 归一化坐标绘制商品形状，便于统一风格
+function drawProduct(ctx, kind, size, color) {
+  const scale = size / 100
+  ctx.save()
+  ctx.scale(scale, scale)
+  ctx.fillStyle = color
+  ctx.strokeStyle = color
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
+  const fillRound = (x, y, w, h, r = 0) => {
+    ctx.beginPath()
+    ctx.roundRect(x, y, w, h, r)
+    ctx.fill()
+  }
+
+  switch (kind) {
+    case 'phone': {
+      fillRound(28, 6, 44, 88, 10)
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.beginPath()
+      ctx.arc(50, 17, 4.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillRect(38, 80, 24, 4)
+      ctx.globalCompositeOperation = 'source-over'
+      break
+    }
+    case 'sofa': {
+      fillRound(12, 38, 76, 34, 10)
+      fillRound(5, 50, 90, 24, 8)
+      fillRound(5, 44, 15, 30, 7)
+      fillRound(80, 44, 15, 30, 7)
+      fillRound(19, 74, 9, 12, 3)
+      fillRound(72, 74, 9, 12, 3)
+      break
+    }
+    case 'dress': {
+      ctx.beginPath()
+      ctx.moveTo(40, 8)
+      ctx.lineTo(60, 8)
+      ctx.lineTo(67, 28)
+      ctx.lineTo(56, 34)
+      ctx.lineTo(66, 52)
+      ctx.lineTo(75, 84)
+      ctx.lineTo(64, 92)
+      ctx.lineTo(36, 92)
+      ctx.lineTo(25, 84)
+      ctx.lineTo(34, 52)
+      ctx.lineTo(44, 34)
+      ctx.lineTo(33, 28)
+      ctx.closePath()
+      ctx.fill()
+      break
+    }
+    case 'shirt': {
+      ctx.beginPath()
+      ctx.moveTo(38, 10)
+      ctx.lineTo(50, 18)
+      ctx.lineTo(62, 10)
+      ctx.lineTo(78, 24)
+      ctx.lineTo(70, 42)
+      ctx.lineTo(62, 38)
+      ctx.lineTo(62, 88)
+      ctx.lineTo(38, 88)
+      ctx.lineTo(38, 38)
+      ctx.lineTo(30, 42)
+      ctx.lineTo(22, 24)
+      ctx.closePath()
+      ctx.fill()
+      break
+    }
+    case 'lipstick': {
+      ctx.beginPath()
+      ctx.moveTo(38, 44)
+      ctx.lineTo(55, 10)
+      ctx.lineTo(70, 17)
+      ctx.lineTo(53, 48)
+      ctx.closePath()
+      ctx.fill()
+      fillRound(33, 46, 32, 38, 4)
+      fillRound(30, 82, 38, 10, 3)
+      break
+    }
+    case 'apple': {
+      ctx.beginPath()
+      ctx.arc(41, 57, 26, 0, Math.PI * 2)
+      ctx.arc(59, 57, 24, 0, Math.PI * 2)
+      ctx.fill()
+      fillRound(49, 20, 4, 16, 2)
+      ctx.save()
+      ctx.translate(59, 25)
+      ctx.rotate(-0.55)
+      ctx.beginPath()
+      ctx.ellipse(0, 0, 13, 7, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+      break
+    }
+    case 'bottle': {
+      fillRound(41, 22, 18, 18, 5)
+      fillRound(33, 36, 34, 54, 8)
+      fillRound(39, 12, 22, 14, 4)
+      break
+    }
+    case 'shoe': {
+      ctx.beginPath()
+      ctx.moveTo(12, 70)
+      ctx.lineTo(24, 50)
+      ctx.lineTo(44, 42)
+      ctx.lineTo(52, 56)
+      ctx.lineTo(78, 62)
+      ctx.quadraticCurveTo(88, 64, 88, 74)
+      ctx.lineTo(16, 78)
+      ctx.closePath()
+      ctx.fill()
+      break
+    }
+    case 'bag': {
+      fillRound(30, 36, 40, 48, 7)
+      ctx.lineWidth = 6
+      ctx.beginPath()
+      ctx.arc(50, 38, 13, Math.PI, 0)
+      ctx.stroke()
+      break
+    }
+    case 'book': {
+      fillRound(28, 16, 44, 68, 5)
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillRect(33, 16, 3, 68)
+      ctx.fillRect(52, 16, 2, 68)
+      ctx.globalCompositeOperation = 'source-over'
+      break
+    }
+    case 'fridge': {
+      fillRound(30, 10, 40, 80, 6)
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillRect(30, 40, 40, 3)
+      ctx.fillRect(62, 26, 4, 10)
+      ctx.fillRect(62, 54, 4, 10)
+      ctx.globalCompositeOperation = 'source-over'
+      break
+    }
+    case 'ring': {
+      ctx.lineWidth = 7
+      ctx.beginPath()
+      ctx.arc(50, 62, 17, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(50, 20)
+      ctx.lineTo(62, 34)
+      ctx.lineTo(50, 48)
+      ctx.lineTo(38, 34)
+      ctx.closePath()
+      ctx.fill()
+      break
+    }
+    case 'paw': {
+      fillRound(34, 44, 32, 30, 14)
+      ctx.beginPath()
+      ctx.arc(28, 34, 9, 0, Math.PI * 2)
+      ctx.arc(44, 24, 9, 0, Math.PI * 2)
+      ctx.arc(60, 24, 9, 0, Math.PI * 2)
+      ctx.arc(72, 34, 9, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    }
+    case 'car': {
+      ctx.beginPath()
+      ctx.moveTo(10, 62)
+      ctx.lineTo(20, 46)
+      ctx.lineTo(42, 42)
+      ctx.lineTo(52, 54)
+      ctx.lineTo(76, 58)
+      ctx.lineTo(88, 66)
+      ctx.lineTo(88, 74)
+      ctx.lineTo(10, 74)
+      ctx.closePath()
+      ctx.fill()
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.beginPath()
+      ctx.arc(28, 76, 8, 0, Math.PI * 2)
+      ctx.arc(72, 76, 8, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalCompositeOperation = 'source-over'
+      break
+    }
+    default: {
+      ctx.beginPath()
+      ctx.moveTo(20, 36)
+      ctx.lineTo(50, 20)
+      ctx.lineTo(80, 36)
+      ctx.lineTo(80, 72)
+      ctx.lineTo(50, 88)
+      ctx.lineTo(20, 72)
+      ctx.closePath()
+      ctx.fill()
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillRect(50, 26, 3, 62)
+      ctx.globalCompositeOperation = 'source-over'
+      break
+    }
+  }
+  ctx.restore()
+}
+
 const RENDER_SIZE = 240
 
-function drawEmoji(ctx, icon, size) {
-  ctx.font = `${Math.round(size * 0.82)}px ${EMOJI_FONT}`
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(icon, size / 2, size / 2 + size * 0.03)
-}
-
-/** 灰度商品图 */
-function grayImage(icon) {
+function renderProduct(kind, color) {
   const canvas = document.createElement('canvas')
   canvas.width = RENDER_SIZE
   canvas.height = RENDER_SIZE
   const ctx = canvas.getContext('2d')
-  ctx.filter = 'grayscale(1) contrast(0.96) brightness(1.14)'
-  drawEmoji(ctx, icon, RENDER_SIZE)
+  drawProduct(ctx, kind, RENDER_SIZE, color)
   return canvas.toDataURL('image/png')
 }
 
-/** 纯色剪影（用商品图 alpha 做遮罩，内部填充品类颜色） */
-function colorSilhouette(icon, color) {
+/** 检测商品图形实际像素范围，保证颜色只填进图形内部 */
+function measureProduct(kind) {
   const canvas = document.createElement('canvas')
   canvas.width = RENDER_SIZE
   canvas.height = RENDER_SIZE
   const ctx = canvas.getContext('2d')
-  drawEmoji(ctx, icon, RENDER_SIZE)
-  ctx.globalCompositeOperation = 'source-in'
-  ctx.fillStyle = color
-  ctx.fillRect(0, 0, RENDER_SIZE, RENDER_SIZE)
-  return canvas.toDataURL('image/png')
-}
-
-/** 检测 emoji 实际像素范围（避免把颜色裁到图形之外） */
-function measureEmoji(icon) {
-  const canvas = document.createElement('canvas')
-  canvas.width = RENDER_SIZE
-  canvas.height = RENDER_SIZE
-  const ctx = canvas.getContext('2d')
-  drawEmoji(ctx, icon, RENDER_SIZE)
+  drawProduct(ctx, kind, RENDER_SIZE, GRAY_FILL)
   const data = ctx.getImageData(0, 0, RENDER_SIZE, RENDER_SIZE).data
   let minX = RENDER_SIZE
   let minY = RENDER_SIZE
@@ -119,8 +311,7 @@ function measureEmoji(icon) {
   let maxY = 0
   for (let y = 0; y < RENDER_SIZE; y += 1) {
     for (let x = 0; x < RENDER_SIZE; x += 1) {
-      const alpha = data[(y * RENDER_SIZE + x) * 4 + 3]
-      if (alpha > 12) {
+      if (data[(y * RENDER_SIZE + x) * 4 + 3] > 12) {
         if (x < minX) minX = x
         if (y < minY) minY = y
         if (x > maxX) maxX = x
@@ -137,67 +328,78 @@ function measureEmoji(icon) {
   }
 }
 
+const sorted = computed(() =>
+  [...props.items]
+    .filter((item) => Number.isFinite(Number(item.value)) && Number(item.value) > 0)
+    .sort((a, b) => Number(b.value) - Number(a.value))
+)
+const total = computed(() => sorted.value.reduce((sum, item) => sum + Number(item.value), 0) || 1)
+
 const nodes = computed(() =>
   sorted.value.map((item, index) => {
     const value = Number(item.value)
     const percent = Number.isFinite(Number(item.percent)) ? Number(item.percent) : (value / total.value) * 100
     const color = FILL_COLORS[index % FILL_COLORS.length]
-    const icon = iconOf(item.name)
+    const kind = kindOf(item.name)
     return {
       name: String(item.name ?? '未分类'),
       value,
       share: Boolean(item.share),
       percent,
       color,
-      icon,
-      bbox: measureEmoji(icon),
-      graySrc: grayImage(icon),
-      colorSrc: colorSilhouette(icon, color)
+      kind,
+      bbox: measureProduct(kind),
+      graySrc: renderProduct(kind, GRAY_FILL),
+      colorSrc: renderProduct(kind, color)
     }
   })
 )
 
 // ---------------- 布局 ----------------
-const COLS = 4
+const MAX_COLS = 4
 const W = 900
 const H = 480
 const AREA = { x: 34, y: 106, w: 832, h: 336 }
 const GAP = 18
-const rows = computed(() => Math.max(1, Math.ceil(nodes.value.length / COLS)))
-const COLS_N = computed(() => Math.min(COLS, Math.max(1, nodes.value.length)))
-const ITEM_W = computed(() => (AREA.w - GAP * (COLS_N.value - 1)) / COLS_N.value)
+
+const cols = computed(() => {
+  if (nodes.value.length <= 1) return 1
+  if (wrapWidth.value >= 620) return Math.min(MAX_COLS, nodes.value.length)
+  if (wrapWidth.value >= 470) return Math.min(3, nodes.value.length)
+  return Math.min(2, nodes.value.length)
+})
+const rows = computed(() => Math.max(1, Math.ceil(nodes.value.length / cols.value)))
+const ITEM_W = computed(() => (AREA.w - GAP * (cols.value - 1)) / cols.value)
 const ITEM_H = computed(() => (AREA.h - GAP * (rows.value - 1)) / rows.value)
 
 function posOf(index) {
-  const row = Math.floor(index / COLS)
-  const col = index % COLS
+  const row = Math.floor(index / cols.value)
+  const col = index % cols.value
   return { x: AREA.x + col * (ITEM_W.value + GAP), y: AREA.y + row * (ITEM_H.value + GAP) }
 }
 
-const iconSizeOf = computed(() => Math.max(72, Math.min(112, ITEM_H.value - 62)))
-const iconYOf = computed(() => Math.round((ITEM_H.value - iconSizeOf.value) / 2) + 8)
+const iconSizeOf = computed(() => Math.max(56, Math.min(112, ITEM_H.value - 62)))
 
 function clipId(index) {
   return `${uid}-clip-${index}`
 }
 
-function effectivePercent(node) {
-  return Math.max(0, Math.min(100, node.percent * growth.value))
+function growthPercent(node) {
+  return node.percent * growth.value
 }
 
-/** 依据商品图实际像素范围计算“液面裁剪区域” */
 function clipRect(index) {
   const node = nodes.value[index]
   if (!node) return { x: 0, y: 0, width: 0, height: 0 }
   const pos = posOf(index)
   const size = iconSizeOf.value
   const imageX = pos.x + (ITEM_W.value - size) / 2
-  const imageY = pos.y + iconYOf.value
+  const imageY = pos.y + 34
   const boxX = imageX + node.bbox.x * size
   const boxY = imageY + node.bbox.y * size
   const boxW = Math.max(1, node.bbox.w * size)
   const boxH = Math.max(1, node.bbox.h * size)
-  const percent = effectivePercent(node) / 100
+  const percent = Math.max(0, Math.min(100, growthPercent(node))) / 100
   return {
     x: boxX,
     y: boxY + boxH * (1 - percent),
@@ -247,9 +449,7 @@ defineExpose({ toDataURL })
     <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="商品图内部占比可视化">
       <defs>
         <clipPath v-for="(node, index) in nodes" :id="clipId(index)" :key="clipId(index)" clipPathUnits="userSpaceOnUse">
-          <rect
-            v-bind="clipRect(index)"
-          />
+          <rect v-bind="clipRect(index)" />
         </clipPath>
       </defs>
 
@@ -282,7 +482,7 @@ defineExpose({ toDataURL })
       <g v-for="(node, index) in nodes" :key="node.name">
         <title>{{ node.name }}：{{ node.share ? ('占比 ' + node.percent.toFixed(2) + '%') : ('销售额 ' + fmt(node.value) + ' 元') }}</title>
 
-        <!-- 百分比 -->
+        <!-- 百分比（数字随填充上涨） -->
         <text
           :x="posOf(index).x + ITEM_W / 2"
           :y="posOf(index).y + 24"
@@ -291,23 +491,23 @@ defineExpose({ toDataURL })
           font-weight="800"
           text-anchor="middle"
           font-family="Microsoft YaHei, PingFang SC, sans-serif"
-        >{{ node.percent.toFixed(1) }}%</text>
+        >{{ growthPercent(node).toFixed(1) }}%</text>
 
         <!-- 灰色商品图做底 -->
         <image
           :href="node.graySrc"
           :x="posOf(index).x + (ITEM_W - iconSizeOf) / 2"
-          :y="posOf(index).y + iconYOf"
+          :y="posOf(index).y + 34"
           :width="iconSizeOf"
           :height="iconSizeOf"
           preserveAspectRatio="xMidYMid meet"
         />
 
-        <!-- 图像内部的彩色占比（彩色剪影 + 底部裁剪） -->
+        <!-- 图像内部的彩色占比（彩色剪影 + 按图形实际范围裁剪） -->
         <image
           :href="node.colorSrc"
           :x="posOf(index).x + (ITEM_W - iconSizeOf) / 2"
-          :y="posOf(index).y + iconYOf"
+          :y="posOf(index).y + 34"
           :width="iconSizeOf"
           :height="iconSizeOf"
           preserveAspectRatio="xMidYMid meet"
@@ -317,7 +517,7 @@ defineExpose({ toDataURL })
         <!-- 品类名称：图片正中下方 -->
         <text
           :x="posOf(index).x + ITEM_W / 2"
-          :y="posOf(index).y + iconYOf + iconSizeOf + 28"
+          :y="posOf(index).y + 34 + iconSizeOf + 26"
           :fill="th.ink"
           font-size="19"
           font-weight="700"
