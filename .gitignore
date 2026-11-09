@@ -44,3 +44,8 @@ frontend/.video_tts/
 frontend/.voice_blocks/
 frontend/.voice_blocks2/
 
+
+frontend/.video_frames/
+frontend/.video_clip/
+frontend/.video_tts/
+

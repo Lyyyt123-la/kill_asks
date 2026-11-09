@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """渲染问数 AskData 演示视频：1080p、配音、烧录字幕，混剪录屏/截图/架构图/难点卡片。"""
 from __future__ import annotations
 
@@ -223,7 +223,7 @@ def card_difficulty() -> Image.Image:
         draw.text((212, y + 66), desc, font=font(19), fill=(178, 200, 184))
         y += 138
     # 右侧截图条
-    shots = [("10-doc-ready.png", "PDF 表格提取"), ("13-image-extracted.png", "截图识别")]
+    shots = [("chart-product-showcase.png", "商品图 · 内部占比"), ("chart-heatmap.png", "热力图 · 矩阵分布")]
     y = 280
     for name, label in shots:
         image = screenshot(name)
@@ -441,3 +441,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
