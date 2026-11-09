@@ -449,3 +449,10 @@ a { color: inherit; text-decoration: none; }
 .chart-card.theme-dark .chart-reason b { color: #9FD3AE; }
 .chart-card.theme-dark .rec-badge { background: rgba(159, 211, 174, .14); color: #9FD3AE; }
 .chart-card.theme-dark .chart-type.recommended { border-color: rgba(159, 211, 174, .35); }
+
+/* 更多图表类型时的换行 */
+.chart-hd-right { flex-wrap: wrap; justify-content: flex-end; }
+.chart-types { flex-wrap: wrap; justify-content: flex-end; max-width: 560px; }
+@media (max-width: 1100px) {
+  .chart-types { max-width: 100%; }
+}

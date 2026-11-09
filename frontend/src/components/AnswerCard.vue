@@ -138,6 +138,7 @@ const elapsed = computed(() => {
           v-if="hasResult"
           :chart="response.chart || {}"
           :result="response.result"
+          @fill="emit('fill', $event)"
         />
 
         <div v-if="response.assumptions?.length" class="assumptions">

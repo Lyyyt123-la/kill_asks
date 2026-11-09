@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import Icon from './Icon.vue'
@@ -8,6 +8,7 @@ const props = defineProps({
   chart: { type: Object, default: () => ({}) },
   result: { type: Object, default: () => ({ columns: [], rows: [] }) }
 })
+const emit = defineEmits(['fill'])
 
 // 更丰富的分类色板（品牌绿 + 琥珀 + 珊瑚 + 蓝 + 紫 + 青 + 金 + 灰蓝）
 const COLORS = ['#2F6B4F', '#E8A33D', '#D96C5F', '#4C8DAE', '#8B6BB1', '#4FA391', '#C4A45A', '#7C8B9E']
@@ -15,9 +16,12 @@ const TYPES = [
   { type: 'bag', label: '商品图', icon: 'image' },
   { type: 'line', label: '折线', icon: 'line-chart' },
   { type: 'bar', label: '柱状', icon: 'bar-chart' },
-  { type: 'pie', label: '环形', icon: 'pie-chart' }
+  { type: 'pie', label: '环形', icon: 'pie-chart' },
+  { type: 'scatter', label: '散点', icon: 'scatter' },
+  { type: 'heatmap', label: '热力', icon: 'heatmap' },
+  { type: 'treemap', label: '树图', icon: 'treemap' }
 ]
-const KIND_LABELS = { bag: '商品展示', line: '趋势分析', bar: '对比分析', pie: '占比分析', table: '数据明细' }
+const KIND_LABELS = { bag: '商品展示', line: '趋势分析', bar: '对比分析', pie: '占比分析', scatter: '相关性', heatmap: '矩阵分布', treemap: '层级占比', table: '数据明细' }
 const THEMES = {
   light: {
     bg: '#FFFEFB', panel: '#FFFFFF', ink: '#2B2823', text: '#5E594E', muted: '#8C8678',
@@ -112,6 +116,30 @@ const bagMetric = computed(() => {
 })
 const bagShareMode = computed(() => bagMetric.value >= 0 && isShareColumn(columns.value[bagMetric.value]))
 
+const categoricalIndexes = computed(() =>
+  columns.value.map((_, index) => index).filter((index) => !numericIndexes.value.includes(index))
+)
+const hasTwoNumeric = computed(() => numericIndexes.value.length >= 2)
+const numericUniques = computed(() =>
+  numericIndexes.value.map((index) => new Set(rows.value.map((row) => Number(row[index])).filter((value) => Number.isFinite(value))).size)
+)
+const scatterReady = computed(() => {
+  if (!hasTwoNumeric.value) return false
+  return Math.min(numericUniques.value[0] ?? 0, numericUniques.value[1] ?? 0) >= 6
+})
+const hasHeatmapShape = computed(() => categoricalIndexes.value.length >= 2 && numericIndexes.value.length >= 1)
+
+/** 当前数据可用的图表类型 */
+const availableTypes = computed(() => {
+  if (!hasData.value) return []
+  const list = []
+  if (hasHeatmapShape.value) list.push('heatmap')
+  if (scatterReady.value) list.push('scatter')
+  if (categoricalIndexes.value.length === 1 && numericIndexes.value.length >= 1) list.push('treemap')
+  list.push('bag', 'line', 'bar', 'pie')
+  return [...new Set(list)].map((type) => TYPES.find((item) => item.type === type)).filter(Boolean)
+})
+
 function looksTemporal(index) {
   const samples = rows.value
     .slice(0, 10)
@@ -133,6 +161,10 @@ const recommendation = computed(() => {
   const single = yIndexes.value.length === 1
   const count = rows.value.length
 
+  if (hasHeatmapShape.value) return { type: 'heatmap', reason: '两个分类维度 + 一个数值 → 热力图看矩阵分布' }
+  if (scatterReady.value && (numericIndexes.value.includes(xIndex.value) || categoricalIndexes.value.length === 0)) {
+    return { type: 'scatter', reason: '两个连续数值字段 → 散点图看相关关系' }
+  }
   if (temporal) return { type: 'line', reason: '检测到时间字段 → 趋势用折线更直观' }
   if (single && count > 12) return { type: 'line', reason: '数据点较多 → 折线图更能看清变化' }
   if (single && /品类|商品|类目|类别/.test(title) && count >= 4 && count <= 12) {
@@ -150,8 +182,9 @@ const type = ref(recommendation.value.type)
 const showTable = ref(recommendation.value.type === 'table')
 const orderedTypes = computed(() => {
   const rec = recommendation.value.type
-  const first = TYPES.find((item) => item.type === rec)
-  const rest = TYPES.filter((item) => item.type !== rec)
+  const pool = availableTypes.value.length ? availableTypes.value : TYPES
+  const first = pool.find((item) => item.type === rec) || TYPES.find((item) => item.type === rec)
+  const rest = pool.filter((item) => item.type !== rec)
   return first ? [first, ...rest] : rest
 })
 const kindLabel = computed(() => KIND_LABELS[showTable.value ? 'table' : type.value] || '数据分析')
@@ -318,6 +351,138 @@ function buildOption(kind) {
   const xIdx = xIndex.value
   const ys = yIndexes.value
   if (!hasData.value || !ys.length) return null
+
+  if (kind === 'scatter') {
+    const xi = numericIndexes.value[0]
+    const yi = numericIndexes.value[1]
+    if (xi === undefined || yi === undefined) return null
+    const points = data
+      .map((row) => [Number(row[xi]), Number(row[yi])])
+      .filter((pair) => Number.isFinite(pair[0]) && Number.isFinite(pair[1]))
+    return {
+      ...baseOption(),
+      grid: { left: 18, right: 26, top: 34, bottom: 14, containLabel: true },
+      tooltip: {
+        ...baseOption().tooltip,
+        trigger: 'item',
+        formatter: (item) => `<div style="font-size:12px;color:${th.tooltipText}"><div style="opacity:.62;margin-bottom:4px">${cols[xi]} / ${cols[yi]}</div><div><b>${fmtFull(item.value[0])}</b> · <b>${fmtFull(item.value[1])}</b></div></div>`
+      },
+      xAxis: {
+        type: 'value', name: cols[xi],
+        nameTextStyle: { color: th.muted, fontSize: 11 },
+        axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: th.axis, fontSize: 11.5, formatter: axisFmt },
+        splitLine: { lineStyle: { color: th.split, type: 'dashed' } }
+      },
+      yAxis: {
+        type: 'value', name: cols[yi],
+        nameTextStyle: { color: th.muted, fontSize: 11 },
+        axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: th.axis, fontSize: 11.5, formatter: axisFmt },
+        splitLine: { lineStyle: { color: th.split, type: 'dashed' } }
+      },
+      series: [{
+        type: 'scatter',
+        data: points,
+        symbolSize: 10,
+        itemStyle: { color: COLORS[0], opacity: 0.78, borderColor: th.bg, borderWidth: 1.5 },
+        emphasis: { scale: 1.5, itemStyle: { shadowBlur: 12, shadowColor: 'rgba(47,107,79,.35)' } }
+      }]
+    }
+  }
+
+  if (kind === 'treemap') {
+    const yi = ys[0]
+    const totalValue = data.reduce((sum, row) => sum + (Number(row[yi]) || 0), 0) || 1
+    return {
+      ...baseOption(),
+      tooltip: {
+        ...baseOption().tooltip,
+        trigger: 'item',
+        formatter: (item) => `<div style="font-size:12px;color:${th.tooltipText}"><div style="opacity:.62">${item.name}</div><div style="margin-top:4px"><b>${fmtFull(item.value)}</b></div></div>`
+      },
+      series: [{
+        type: 'treemap',
+        roam: false,
+        nodeClick: false,
+        breadcrumb: { show: false },
+        left: 12,
+        right: 12,
+        top: 12,
+        bottom: 12,
+        label: {
+          show: true,
+          formatter: (params) => `${params.name}\n${Number(params.data?.percent || 0).toFixed(1)}%`,
+          color: '#FFFFFF',
+          fontSize: 14,
+          lineHeight: 20,
+          fontWeight: 600,
+          textShadowColor: 'rgba(0,0,0,.35)',
+          textShadowBlur: 3
+        },
+        itemStyle: { borderColor: th.bg, borderWidth: 2, gapWidth: 2, borderRadius: 6 },
+        emphasis: { itemStyle: { shadowBlur: 14, shadowColor: 'rgba(0,0,0,.3)' } },
+        data: data.map((row, index) => {
+          const value = Number(row[yi]) || 0
+          return {
+            name: String(row[xIdx] ?? '未分类'),
+            value,
+            percent: (value / totalValue) * 100,
+            itemStyle: { color: COLORS[index % COLORS.length] }
+          }
+        })
+      }]
+    }
+  }
+
+  if (kind === 'heatmap') {
+    const cats = categoricalIndexes.value
+    if (cats.length < 2 || !numericIndexes.value.length) return null
+    const catX = cats[0]
+    const catY = cats[1]
+    const valueIndex = numericIndexes.value[0]
+    const xValues = [...new Set(data.map((row) => String(row[catX] ?? '-')))]
+    const yValues = [...new Set(data.map((row) => String(row[catY] ?? '-')))]
+    const points = data
+      .map((row) => [xValues.indexOf(String(row[catX] ?? '-')), yValues.indexOf(String(row[catY] ?? '-')), Number(row[valueIndex]) || 0])
+      .filter((point) => point[0] >= 0 && point[1] >= 0)
+    const values = points.map((point) => point[2])
+    const min = Math.min(...values, 0)
+    const max = Math.max(...values, 1)
+    return {
+      ...baseOption(),
+      tooltip: {
+        ...baseOption().tooltip,
+        trigger: 'item',
+        formatter: (item) => `<div style="font-size:12px;color:${th.tooltipText}"><div style="opacity:.62">${xValues[item.value[0]]} · ${yValues[item.value[1]]}</div><div style="margin-top:4px"><b>${fmtFull(item.value[2])}</b></div></div>`
+      },
+      grid: { left: 18, right: 26, top: 34, bottom: 54, containLabel: true },
+      xAxis: {
+        type: 'category', data: xValues,
+        axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: th.axis, fontSize: 11.5, interval: 0 }
+      },
+      yAxis: {
+        type: 'category', data: yValues,
+        axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: th.axis, fontSize: 11.5 }
+      },
+      visualMap: {
+        min, max,
+        orient: 'horizontal', left: 'center', bottom: 0,
+        itemWidth: 10, itemHeight: 90,
+        textStyle: { color: th.muted, fontSize: 10.5 },
+        inRange: { color: ['#E9F1EC', '#9CC5AC', '#2F6B4F'] }
+      },
+      series: [{
+        type: 'heatmap',
+        data: points,
+        label: { show: true, color: th.ink, fontSize: 10.5, formatter: (item) => fmt(item.value[2]) },
+        itemStyle: { borderColor: th.bg, borderWidth: 2, borderRadius: 4 },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(47,107,79,.35)' } }
+      }]
+    }
+  }
 
   if (kind === 'pie') {
     const yi = ys[0]
@@ -554,6 +719,11 @@ const tableMax = computed(() => {
   return maxMap
 })
 
+function onSelectProduct(node) {
+  if (!node) return
+  emit('fill', `查看「${node.name}」的销售明细`)
+}
+
 function cellBar(index, value) {
   const max = tableMax.value[index] || 0
   if (!max || !Number.isFinite(Number(value))) return {}
@@ -624,7 +794,14 @@ watch(
 
     <div class="chart-body">
       <div v-show="!showTable && type !== 'bag'" ref="chartEl" class="echart" />
-      <ProductShowcaseChart v-if="!showTable && type === 'bag'" ref="bagRef" :items="bagItems" :theme="theme" :total-label="bagTotalLabel" />
+      <ProductShowcaseChart
+        v-if="!showTable && type === 'bag'"
+        ref="bagRef"
+        :items="bagItems"
+        :theme="theme"
+        :total-label="bagTotalLabel"
+        @select="onSelectProduct"
+      />
       <div v-if="!hasData" class="chart-empty">没有查询到符合条件的数据</div>
       <div v-if="showTable && hasData" class="table-scroll">
         <table class="data-table">

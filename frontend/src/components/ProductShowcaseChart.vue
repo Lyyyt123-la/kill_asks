@@ -16,8 +16,11 @@ const props = defineProps({
 
 const wrapRef = ref(null)
 const growth = ref(0)
+const revealed = ref(false)
+const hovered = ref(-1)
 const wrapWidth = ref(900)
 const uid = Math.random().toString(36).slice(2, 8)
+const emit = defineEmits(['select'])
 let observer = null
 
 function startGrowth() {
@@ -39,6 +42,7 @@ onMounted(() => {
     })
     observer.observe(wrapRef.value)
   }
+  requestAnimationFrame(() => { revealed.value = true })
   startGrowth()
 })
 
@@ -288,12 +292,134 @@ function drawProduct(ctx, kind, size, color) {
 
 const RENDER_SIZE = 240
 
+/** 在商品图形上添加深色细节线条（屏幕/缝线/衣褶等） */
+function drawDetails(ctx, kind, size) {
+  const scale = size / 100
+  ctx.save()
+  ctx.scale(scale, scale)
+  ctx.globalAlpha = 0.72
+  ctx.strokeStyle = '#4B4740'
+  ctx.fillStyle = '#4B4740'
+  ctx.lineWidth = 1.7
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  const line = (x1, y1, x2, y2) => {
+    ctx.beginPath()
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x2, y2)
+    ctx.stroke()
+  }
+  const strokeRound = (x, y, w, h, r) => {
+    ctx.beginPath()
+    ctx.roundRect(x, y, w, h, r)
+    ctx.stroke()
+  }
+  const dot = (x, y, r) => {
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  switch (kind) {
+    case 'phone':
+      strokeRound(34, 25, 32, 56, 4)
+      line(40, 38, 60, 38)
+      dot(50, 17.5, 1.6)
+      line(43, 84, 57, 84)
+      break
+    case 'sofa':
+      line(16, 51, 84, 51)
+      line(38, 51, 38, 71)
+      line(62, 51, 62, 71)
+      line(19, 78, 19, 84)
+      line(81, 78, 81, 84)
+      break
+    case 'dress':
+      ctx.beginPath()
+      ctx.arc(50, 20, 8, 0.1 * Math.PI, 0.9 * Math.PI)
+      ctx.stroke()
+      line(35, 52, 65, 52)
+      line(44, 60, 42, 84)
+      line(58, 60, 60, 84)
+      break
+    case 'shirt':
+      line(50, 18, 50, 40)
+      line(38, 12, 50, 26)
+      line(62, 12, 50, 26)
+      strokeRound(56, 48, 10, 9, 2)
+      dot(50, 48, 1.4)
+      dot(50, 58, 1.4)
+      break
+    case 'lipstick':
+      line(38, 44, 66, 44)
+      line(33, 64, 65, 64)
+      line(33, 70, 65, 70)
+      break
+    case 'apple':
+      line(51, 22, 51, 30)
+      ctx.beginPath()
+      ctx.moveTo(53, 30)
+      ctx.quadraticCurveTo(58, 22, 68, 24)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.arc(50, 56, 18, 1.15 * Math.PI, 1.45 * Math.PI)
+      ctx.stroke()
+      break
+    case 'bottle':
+      line(41, 30, 59, 30)
+      strokeRound(36, 46, 28, 24, 4)
+      break
+    case 'shoe':
+      line(18, 78, 88, 76)
+      line(30, 58, 48, 52)
+      line(36, 64, 52, 58)
+      line(42, 70, 56, 64)
+      break
+    case 'bag':
+      strokeRound(30, 48, 40, 36, 4)
+      dot(50, 58, 1.8)
+      break
+    case 'book':
+      strokeRound(39, 18, 45, 64, 2)
+      line(33, 24, 33, 76)
+      break
+    case 'fridge':
+      line(30, 40, 70, 40)
+      line(62, 26, 62, 36)
+      line(62, 54, 62, 64)
+      break
+    case 'ring':
+      ctx.beginPath()
+      ctx.arc(50, 62, 17, 1.1 * Math.PI, 1.4 * Math.PI)
+      ctx.stroke()
+      line(50, 22, 50, 48)
+      line(38, 34, 62, 34)
+      break
+    case 'paw':
+      dot(34, 58, 3)
+      dot(50, 60, 3)
+      dot(66, 58, 3)
+      break
+    case 'car':
+      line(22, 66, 86, 66)
+      line(42, 42, 50, 54)
+      line(74, 58, 74, 74)
+      break
+    default:
+      line(20, 36, 80, 36)
+      line(50, 20, 50, 88)
+      break
+  }
+  ctx.restore()
+}
+
 function renderProduct(kind, color) {
   const canvas = document.createElement('canvas')
   canvas.width = RENDER_SIZE
   canvas.height = RENDER_SIZE
   const ctx = canvas.getContext('2d')
   drawProduct(ctx, kind, RENDER_SIZE, color)
+  drawDetails(ctx, kind, RENDER_SIZE)
   return canvas.toDataURL('image/png')
 }
 
@@ -408,6 +534,21 @@ function clipRect(index) {
   }
 }
 
+/** 入场动画：从中心向外扩散、羽化边缘、透明到不透明，逐项错峰 */
+function itemStyle(index) {
+  const delay = index * 90
+  const scale = hovered.value === index ? 1.06 : 1
+  return {
+    cursor: 'pointer',
+    opacity: revealed.value ? 1 : 0,
+    transformBox: 'fill-box',
+    transformOrigin: 'center',
+    transform: revealed.value ? `scale(${scale})` : 'scale(0.55)',
+    filter: revealed.value ? 'blur(0px)' : 'blur(10px)',
+    transition: `opacity .75s ease ${delay}ms, transform .85s cubic-bezier(.2,.7,.2,1) ${delay}ms, filter .85s ease ${delay}ms`
+  }
+}
+
 function fmt(value) {
   const n = Number(value)
   if (!Number.isFinite(n)) return '-'
@@ -476,10 +617,17 @@ defineExpose({ toDataURL })
         :fill="th.subtle"
         font-size="14"
         font-family="Microsoft YaHei, PingFang SC, sans-serif"
-      >灰色商品图做底 · 颜色在图像内部由下往上显示占比</text>
+      >灰色商品图做底 · 颜色在图像内部由下往上显示占比 · 悬停查看，点击可下钻</text>
 
       <!-- 商品图排列（无边框） -->
-      <g v-for="(node, index) in nodes" :key="node.name">
+      <g
+        v-for="(node, index) in nodes"
+        :key="node.name"
+        :style="itemStyle(index)"
+        @mouseenter="hovered = index"
+        @mouseleave="hovered = -1"
+        @click="emit('select', node)"
+      >
         <title>{{ node.name }}：{{ node.share ? ('占比 ' + node.percent.toFixed(2) + '%') : ('销售额 ' + fmt(node.value) + ' 元') }}</title>
 
         <!-- 百分比（数字随填充上涨） -->

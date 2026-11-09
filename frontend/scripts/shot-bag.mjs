@@ -1,4 +1,4 @@
-﻿/** 购物袋图 + 推荐图表验证截图。 */
+/** 购物袋图 + 推荐图表验证截图。 */
 import { chromium } from 'playwright-core'
 import fs from 'node:fs'
 
@@ -40,6 +40,16 @@ try {
   await shot('01-bag-card.png')
   await page.screenshot({ path: `${OUT}/01-bag-full.png` })
 
+  // 树图（同一份品类构成数据）
+  const treemapBtn = page.locator('.chart-type', { hasText: '树图' }).last()
+  if (await treemapBtn.count()) {
+    await treemapBtn.click()
+    await page.waitForTimeout(1400)
+    await shot('02b-treemap.png')
+    await page.locator('.chart-type', { hasText: '商品图' }).last().click()
+    await page.waitForTimeout(600)
+  }
+
   // 检查推荐文案与按钮顺序
   const reason = await page.locator('.chart-reason').last().innerText()
   const firstButton = await page.locator('.chart-type').last().locator('..').locator('button').first().innerText().catch(() => '')
@@ -67,4 +77,5 @@ try {
 } finally {
   await browser.close()
 }
+
 
