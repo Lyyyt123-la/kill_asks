@@ -47,6 +47,14 @@ def preview_dataset(dataset_id: str, limit: int = 50):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/{dataset_id}/reset", response_model=DatasetInfo, summary="重置数据源（重新读取原始文件）")
+def reset_dataset(dataset_id: str):
+    try:
+        return dataset_service.reset_dataset(dataset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.delete("/{dataset_id}", summary="删除数据集")
 def delete_dataset(dataset_id: str):
     try:

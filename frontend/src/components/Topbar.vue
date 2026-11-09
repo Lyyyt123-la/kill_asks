@@ -7,7 +7,7 @@ defineProps({
   health: { type: Object, default: null },
   inspectorOpen: { type: Boolean, default: false }
 })
-const emit = defineEmits(['toggle-inspector', 'preview', 'exit-doc'])
+const emit = defineEmits(['toggle-inspector', 'preview', 'exit-doc', 'reset'])
 </script>
 
 <template>
@@ -24,6 +24,9 @@ const emit = defineEmits(['toggle-inspector', 'preview', 'exit-doc'])
       </button>
       <button v-else-if="dataset" class="chip click" @click="emit('preview')">
         <span class="dot ok" />{{ dataset.source_file }}
+      </button>
+      <button v-if="dataset" class="chip click" title="重新读取原始文件并刷新数据源" @click="emit('reset')">
+        <Icon name="refresh" :size="12" />重置数据源
       </button>
       <span class="chip">
         <Icon name="cpu" :size="13" />{{ health?.mock_mode ? '演示模式' : (health?.model || '大模型') }}

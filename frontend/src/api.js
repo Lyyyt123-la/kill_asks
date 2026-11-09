@@ -64,6 +64,7 @@ export const api = {
   preview: (id, limit = 50) => request(`/datasets/${id}/preview?limit=${limit}`),
   loadDemo: () => request('/datasets/demo', { method: 'POST' }),
   upload: (file) => uploadFile('/datasets/upload', file),
+  resetDataset: (id) => request(`/datasets/${id}/reset`, { method: 'POST' }),
   // 对话
   chat: (payload) => jsonPost('/chat', payload),
   runSql: (payload) => jsonPost('/query', payload),

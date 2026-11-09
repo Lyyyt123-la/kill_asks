@@ -338,3 +338,21 @@ def delete_dataset(dataset_id: str) -> None:
         import shutil
         shutil.rmtree(upload_dir, ignore_errors=True)
     store.delete_dataset(dataset_id)
+
+
+def reset_dataset(dataset_id: str) -> DatasetInfo:
+    """重置数据源：重新读取原始文件并重建 DuckDB 表（对话在服务端不保留）。"""
+    meta = store.get_dataset(dataset_id)
+    if not meta:
+        raise ValueError("数据集不存在")
+    if dataset_id == config.DEMO_DATASET_ID:
+        delete_dataset(dataset_id)
+        return load_demo()
+    source_file = str(meta.get("source_file") or "")
+    source_path = config.UPLOADS_DIR / dataset_id / source_file
+    if not source_file or not source_path.exists() or not source_path.is_file():
+        raise ValueError("没有找到原始上传文件，无法重置；请重新导入数据")
+    data = source_path.read_bytes()
+    display_name = str(meta.get("name") or Path(source_file).stem)
+    delete_dataset(dataset_id)
+    return save_upload(source_file, data, display_name=display_name, dataset_id=dataset_id)

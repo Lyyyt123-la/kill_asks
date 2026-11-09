@@ -105,7 +105,11 @@ const yIndexes = computed(() => {
 })
 
 function isShareColumn(name) {
-  return /占比|比例|百分比|%|率/.test(String(name || ''))
+  return /占比|比例|百分比|份额|%/.test(String(name || ''))
+}
+
+function isRateColumn(name) {
+  return /率/.test(String(name || ''))
 }
 
 // 购物袋图优先使用“销售额”这类绝对值列，而不是已经算好的占比列
@@ -232,7 +236,15 @@ const kpis = computed(() => {
   const stats = yStats.value
   const metric = columns.value[stats.yi] || '数值'
   const share = isShareColumn(metric)
-  const fmtValue = (value) => (share ? `${Math.min(100, Number(value) || 0).toFixed(1)}%` : fmt(value))
+  const rate = isRateColumn(metric)
+  const fmtValue = (value) => (share || rate ? `${Math.min(100, Number(value) || 0).toFixed(1)}%` : fmt(value))
+  if (rate) {
+    return [
+      { label: '平均', value: fmtValue(stats.avg), hint: metric },
+      { label: '最高', value: fmtValue(stats.maxValue), hint: stats.maxLabel },
+      { label: '最低', value: fmtValue(stats.minValue), hint: stats.minLabel }
+    ]
+  }
   return [
     { label: '合计', value: share ? '100%' : fmt(stats.sum), hint: metric },
     { label: '最高', value: fmtValue(stats.maxValue), hint: stats.maxLabel },
@@ -443,9 +455,23 @@ function buildOption(kind) {
     const valueIndex = numericIndexes.value[0]
     const xValues = [...new Set(data.map((row) => String(row[catX] ?? '-')))]
     const yValues = [...new Set(data.map((row) => String(row[catY] ?? '-')))]
-    const points = data
-      .map((row) => [xValues.indexOf(String(row[catX] ?? '-')), yValues.indexOf(String(row[catY] ?? '-')), Number(row[valueIndex]) || 0])
-      .filter((point) => point[0] >= 0 && point[1] >= 0)
+    // 同一个 (行, 列) 可能有多条记录，先聚合，避免标签叠在一起
+    const cellMap = new Map()
+    data.forEach((row) => {
+      const x = xValues.indexOf(String(row[catX] ?? '-'))
+      const y = yValues.indexOf(String(row[catY] ?? '-'))
+      const value = Number(row[valueIndex]) || 0
+      if (x < 0 || y < 0) return
+      const key = `${x}|${y}`
+      if (!cellMap.has(key)) {
+        cellMap.set(key, { x, y, sum: value, count: 1 })
+      } else {
+        const cell = cellMap.get(key)
+        cell.sum += value
+        cell.count += 1
+      }
+    })
+    const points = [...cellMap.values()].map((cell) => [cell.x, cell.y, cell.sum / cell.count])
     const values = points.map((point) => point[2])
     const min = Math.min(...values, 0)
     const max = Math.max(...values, 1)
@@ -476,6 +502,8 @@ function buildOption(kind) {
       },
       series: [{
         type: 'heatmap',
+        animation: false,
+        labelLayout: { hideOverlap: true },
         data: points,
         label: { show: true, color: th.ink, fontSize: 10.5, formatter: (item) => fmt(item.value[2]) },
         itemStyle: { borderColor: th.bg, borderWidth: 2, borderRadius: 4 },

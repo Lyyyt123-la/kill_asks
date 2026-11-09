@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from './api'
 import Sidebar from './components/Sidebar.vue'
@@ -31,6 +31,25 @@ const previewOpen = ref(false)
 const prefillQuestion = ref(null)
 const toast = ref('')
 let toastTimer = null
+const conversationCache = new Map()
+
+function currentConversationKey() {
+  if (activeDocument.value) return `doc:${activeDocument.value.id}`
+  if (activeDataset.value) return `data:${activeDataset.value.id}`
+  return ''
+}
+
+function snapshotConversation() {
+  const key = currentConversationKey()
+  if (!key) return
+  conversationCache.set(key, { messages: messages.value, response: activeResponse.value })
+}
+
+function restoreConversation(key) {
+  const cached = conversationCache.get(key)
+  messages.value = cached?.messages || []
+  activeResponse.value = cached?.response || null
+}
 
 const modelLabel = computed(() => {
   if (!health.value) return '连接中…'
@@ -65,17 +84,19 @@ onMounted(async () => {
 })
 
 function newChat() {
+  const key = currentConversationKey()
+  if (key) conversationCache.delete(key)
   messages.value = []
   activeResponse.value = null
 }
 
 async function selectDataset(row) {
+  snapshotConversation()
   try {
     const full = await api.getDataset(row.id)
     activeDataset.value = full
     activeDocument.value = null
-    messages.value = []
-    activeResponse.value = null
+    restoreConversation(`data:${full.id}`)
     inspectorOpen.value = false
   } catch (exc) {
     showToast('读取数据集失败：' + exc.message)
@@ -83,12 +104,12 @@ async function selectDataset(row) {
 }
 
 async function selectDocument(row) {
+  snapshotConversation()
   try {
     const full = await api.getDocument(row.id)
     activeDocument.value = full
     activeDataset.value = null
-    messages.value = []
-    activeResponse.value = null
+    restoreConversation(`doc:${full.id}`)
     inspectorOpen.value = false
   } catch (exc) {
     showToast('读取文档失败：' + exc.message)
@@ -96,6 +117,7 @@ async function selectDocument(row) {
 }
 
 function exitDocMode() {
+  snapshotConversation()
   activeDocument.value = null
   messages.value = []
   activeResponse.value = null
@@ -257,6 +279,29 @@ async function onAnalyzeDataset(datasetId) {
     showToast('切换数据集失败：' + exc.message)
   }
 }
+
+async function resetDataSource() {
+  const dataset = activeDataset.value
+  if (!dataset || loading.value) return
+  const confirmed = window.confirm(`确定重置「${dataset.name}」吗？\n会重新读取原始文件，并清空这个数据源的对话。`)
+  if (!confirmed) return
+  loading.value = true
+  try {
+    const info = await api.resetDataset(dataset.id)
+    conversationCache.delete(`data:${dataset.id}`)
+    messages.value = []
+    activeResponse.value = null
+    await refreshDatasets()
+    await selectDataset(info)
+    messages.value = []
+    activeResponse.value = null
+    showToast(`已重置数据源：${info.name}`)
+  } catch (exc) {
+    showToast('重置失败：' + (exc.message || '请检查后端服务'))
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <template>
@@ -282,6 +327,7 @@ async function onAnalyzeDataset(datasetId) {
         @toggle-inspector="inspectorOpen = !inspectorOpen"
         @preview="previewOpen = true"
         @exit-doc="exitDocMode"
+        @reset="resetDataSource"
       />
 
       <ChatThread
